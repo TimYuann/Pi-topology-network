@@ -152,7 +152,10 @@ function matchesForbiddenAction(command: string, forbidden: string[]): boolean {
 }
 
 function looksLikeShellWrite(command: string): boolean {
-  const normalized = command.replace(/\s+/g, " ").trim();
+  const normalized = command
+    .replace(/\s+/g, " ")
+    .replace(/(^|[\s;&|])\d?>>?\s*\/dev\/null\b/g, "$1")
+    .trim();
   return [
     /(^|[;&|]\s*)cat\s+>/.test(normalized),
     /(^|[;&|]\s*)tee(\s+-a)?\s+/.test(normalized),

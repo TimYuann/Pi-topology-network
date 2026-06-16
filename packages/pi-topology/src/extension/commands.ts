@@ -14,12 +14,14 @@ import { spawn } from "node:child_process";
 
 interface PiLike {
   registerCommand: (name: string, command: Record<string, unknown>) => void;
+  getFlag?: (name: string) => unknown;
   sendMessage?: (message: { customType: string; content: string; display?: string; details?: Record<string, unknown> }, options?: Record<string, unknown>) => void;
 }
 
 export interface TopologyCommandHooks {
   activateSupervisor?: (mission: MissionCard, ctx: CommandContext) => Promise<{ sessionId: string }>;
   isSupervisorActive?: (missionId?: string) => boolean;
+  projectName?: () => string | undefined;
 }
 
 export function registerTopologyCommands(pi: PiLike, hooks: TopologyCommandHooks = {}): void {
@@ -228,7 +230,7 @@ async function initMission(cwd: string, objective: string, ctx: CommandContext, 
     return resumeExistingMission(cwd, state.mission, ctx, hooks);
   }
 
-  const project = path.basename(cwd);
+  const project = hooks.projectName?.() ?? process.env.PI_TOPOLOGY_PROJECT ?? path.basename(cwd);
   const mission = createMissionDraft({
     project,
     workdir: cwd,

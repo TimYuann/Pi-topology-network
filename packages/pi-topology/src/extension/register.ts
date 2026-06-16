@@ -44,6 +44,10 @@ export function registerPiTopology(pi: PiLike): void {
   registerTopologyCommands(pi, {
     activateSupervisor: (mission, ctx) => activateCurrentSessionAsSupervisor(mission, ctx),
     isSupervisorActive: (missionId) => takeoverRole === "topology-supervisor" && (!missionId || takeoverMission?.mission_id === missionId),
+    projectName: () => {
+      const value = pi.getFlag?.("project") ?? process.env.PI_TOPOLOGY_PROJECT;
+      return typeof value === "string" && value.trim() ? value.trim() : undefined;
+    },
   });
 
   pi.on("resources_discover", () => ({

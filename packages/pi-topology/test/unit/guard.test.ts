@@ -65,3 +65,26 @@ test("non-repair roles cannot use shell commands that write files", () => {
   });
   assert.equal(runnerReadOnly.decision, "allow");
 });
+
+test("read-only shell commands may silence stderr to /dev/null", () => {
+  for (const command of [
+    "ls /work/project 2>/dev/null",
+    "find /work/project -maxdepth 1 -type f 2>/dev/null",
+    "rg package /work/project 2>/dev/null",
+    "cat /work/project/missing 2>/dev/null",
+  ]) {
+    assert.equal(
+      evaluateToolCall({ role: "runner", mission, tool: "shell", command }).decision,
+      "allow",
+      command,
+    );
+  }
+
+  const realWrite = evaluateToolCall({
+    role: "runner",
+    mission,
+    tool: "shell",
+    command: "echo hi > /work/project/docs/out.txt",
+  });
+  assert.equal(realWrite.decision, "block");
+});

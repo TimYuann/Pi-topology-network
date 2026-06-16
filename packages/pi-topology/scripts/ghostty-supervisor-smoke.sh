@@ -17,6 +17,7 @@ export PI_OFFLINE="${PI_OFFLINE:-0}"
 export PI_PROVIDER="${PI_PROVIDER:-minimax-cn}"
 export PI_MODEL="${PI_MODEL:-MiniMax-M3}"
 export PI_THINKING="${PI_THINKING:-low}"
+export PI_TOPOLOGY_SPAWN_MODE_LOCK="$SPAWN_MODE"
 
 PI_MODEL_ARGS=()
 if [[ "$PI_OFFLINE" == "1" ]]; then

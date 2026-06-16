@@ -6,6 +6,7 @@ import test from "node:test";
 import { createPacket } from "../../src/runtime/packet.ts";
 import registerPiTopology from "../../index.ts";
 import { createInitialStatusBoard, createMissionDraft } from "../../src/runtime/mission.ts";
+import { clearPacketMemory } from "../../src/state/packet-memory.ts";
 import { topology_send } from "../../src/transport/local-coms.ts";
 import { writePeerRegistry } from "../../src/transport/registry.ts";
 
@@ -368,6 +369,32 @@ test("topology command treats freeform args as the task card without requiring i
   assert.equal(mission.progress.source, "manual");
   const sessions = (await readFile(join(cwd, ".pi/topology/sessions.jsonl"), "utf8")).trim().split("\n");
   assert.equal(sessions.length, 8);
+});
+
+test("topology command uses project flag when drafting a mission", async () => {
+  const commands: Record<string, { handler: (args: string, ctx: { cwd: string }) => Promise<string> }> = {};
+  const pi = {
+    registerTool() {},
+    registerCommand(name: string, command: { handler: (args: string, ctx: { cwd: string }) => Promise<string> }) {
+      commands[name] = command;
+    },
+    sendMessage() {},
+    on() {},
+    registerFlag() {},
+    getFlag(name: string) {
+      return name === "project" ? "flag-project" : undefined;
+    },
+  };
+  registerPiTopology(pi);
+
+  const cwd = await mkdtemp(join(tmpdir(), "pi-topology-project-flag-"));
+  const result = await commands.topology.handler("Stabilize package entry flow", { cwd });
+
+  assert.match(result, /initialized mission/);
+  const mission = JSON.parse(await readFile(join(cwd, ".pi/topology/mission-card.json"), "utf8"));
+  assert.equal(mission.project, "flag-project");
+  const board = JSON.parse(await readFile(join(cwd, ".pi/topology/status-board.json"), "utf8"));
+  assert.equal(board.project, "flag-project");
 });
 
 test("topology command promotes the current session to supervisor after mission init", async () => {
@@ -788,6 +815,63 @@ test("topology_spawn_role ignores caller-supplied provider and model overrides",
   assert.equal(hq?.thinking, "low");
 });
 
+test("topology_spawn_role honors spawn mode lock over caller requested launch", async () => {
+  const registered: Record<string, { execute: Function }> = {};
+  const pi = {
+    registerTool(tool: { name: string; execute: Function }) {
+      registered[tool.name] = tool;
+    },
+    registerCommand() {},
+    on() {},
+    registerFlag() {},
+    getFlag() {
+      return undefined;
+    },
+  };
+  registerPiTopology(pi);
+
+  const cwd = await mkdtemp(join(tmpdir(), "pi-topology-spawn-mode-lock-"));
+  const ctx = { cwd };
+  const previousLock = process.env.PI_TOPOLOGY_SPAWN_MODE_LOCK;
+  try {
+    process.env.PI_TOPOLOGY_SPAWN_MODE_LOCK = "print";
+    await registered.topology_init_mission.execute(
+      "init",
+      { objective: "Keep print smoke from launching", project: "dogfood", allowed_paths: [cwd] },
+      undefined,
+      undefined,
+      ctx,
+    );
+    const printed = await registered.topology_spawn_role.execute(
+      "spawn",
+      {
+        role: "hq",
+        mode: "launch",
+        terminal_app: "Ghostty.app",
+        log_path: join(cwd, ".pi/topology/logs/hq-spawn.log"),
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const events = (await readFile(join(cwd, ".pi/topology/runtime-events.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { event_type: string; mode?: string; launch_requested?: boolean });
+    const spawnRequest = events.find((event) => event.event_type === "spawn_request");
+    const spawnResult = events.find((event) => event.event_type === "spawn_result");
+    assert.match(printed.content[0].text, /launch plan prepared for hq; not launched/);
+    assert.equal(printed.details.mode, "print");
+    assert.equal(printed.details.launch_requested, false);
+    assert.equal(spawnRequest?.mode, "print");
+    assert.equal(spawnResult?.mode, "print");
+    assert.equal(spawnResult?.launch_requested, false);
+  } finally {
+    restoreEnv("PI_TOPOLOGY_SPAWN_MODE_LOCK", previousLock);
+  }
+});
+
 test("topology_send derives request_msg_id from ACK body for lifecycle tracking", async () => {
   const registered: Record<string, { execute: Function }> = {};
   const pi = {
@@ -1015,6 +1099,8 @@ test("topology_list and topology_get do not duplicate packet_received audit even
 
     await registered.topology_list.execute("list-1", { to: "runner" }, undefined, undefined, ctx);
     await registered.topology_list.execute("list-2", { to: "runner" }, undefined, undefined, ctx);
+    clearPacketMemory(request.details.packet.mission_id, "runner");
+    await registered.topology_list.execute("list-after-restart", { to: "runner" }, undefined, undefined, ctx);
     await registered.topology_get.execute(
       "get-1",
       { to: "runner", packet_id: request.details.packet.packet_id },

@@ -240,11 +240,12 @@ export function registerTopologyTools(pi: PiLike): void {
       if (!loaded.ok) return toolText(loaded.message, loaded);
       const packageRoot = resolvePackageRoot();
       const safeLogPath = resolveRoleLogPath(ctx.cwd, params.role, params.log_path);
+      const mode = lockedSpawnMode() ?? params.mode ?? "print";
       await appendEvent(loaded.eventPath, {
         event_type: "spawn_request",
         mission_id: loaded.mission.mission_id,
         role: params.role,
-        mode: params.mode ?? "print",
+        mode,
         log_path: safeLogPath,
         evidence: { transport: [loaded.missionPath], business: [params.role], inference: [] },
       });
@@ -258,7 +259,6 @@ export function registerTopologyTools(pi: PiLike): void {
         initialPrompt: params.initial_prompt,
       });
       const scriptPath = await writeRoleLaunchScript(ctx.cwd, plan, { logPath: safeLogPath });
-      const mode = params.mode ?? "print";
       let launchRequested = false;
       await appendSessionRecord(loaded.sessionLedgerPath, {
         mission_id: loaded.mission.mission_id,
@@ -789,12 +789,18 @@ function localTransportRoot(project: string): string {
   return process.env.PI_COMS_DIR ?? path.join("/tmp", `pi-topology-${project}`);
 }
 
+function lockedSpawnMode(): "print" | "launch" | undefined {
+  const value = process.env.PI_TOPOLOGY_SPAWN_MODE_LOCK;
+  return value === "print" || value === "launch" ? value : undefined;
+}
+
 async function appendPacketReceivedEventOnce(
   loaded: Extract<ReturnType<typeof loadRuntimeState>, { ok: true }>,
   to: WorkerRole | "topology-supervisor" | "owner",
   packet: { packet_id: string; body?: Record<string, unknown> },
   source: "topology_list" | "topology_await" | "topology_get",
 ): Promise<void> {
+  if (hasPacketReceivedEvent(loaded.eventPath, loaded.mission.mission_id, to, packet.packet_id)) return;
   if (markPacketSeen(loaded.mission.mission_id, to, packet.packet_id)) return;
   await appendEvent(loaded.eventPath, {
     event_type: "packet_received",
@@ -804,6 +810,20 @@ async function appendPacketReceivedEventOnce(
     source,
     evidence: { transport: [localTransportRoot(loaded.mission.project)], business: [packet.body], inference: [] },
   });
+}
+
+function hasPacketReceivedEvent(
+  eventPath: string,
+  missionId: string,
+  to: WorkerRole | "topology-supervisor" | "owner",
+  packetId: string,
+): boolean {
+  return readJsonl(eventPath).some((event) => (
+    event.event_type === "packet_received"
+    && event.mission_id === missionId
+    && event.to === to
+    && event.packet_id === packetId
+  ));
 }
 
 function writeJson(file: string, value: unknown): void {
