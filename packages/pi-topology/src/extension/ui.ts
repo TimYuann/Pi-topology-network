@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { TOPOLOGY_ROLES, type MissionCard, type StatusBoard, type TopologyRole } from "../runtime/mission.ts";
+import { activePendingPackets } from "../runtime/status-board.ts";
 import { readFreshPeerRegistrySync } from "../transport/registry.ts";
 
 export interface TopologyUiContext {
@@ -106,7 +107,7 @@ export function buildTopologyUiSnapshot(cwd: string, currentRole = process.env.P
   const transportRoot = process.env.PI_COMS_DIR ?? path.join("/tmp", `pi-topology-${project}`);
   const packetRoot = path.join(transportRoot, "projects", project, "packets");
   const livePeers = readFreshPeerRegistrySync(transportRoot, project);
-  const packets = readPacketCounts(packetRoot);
+  const packets = readPacketCounts(packetRoot, board);
   const roleSet = new Set<TopologyRole>();
   const currentRoleName = currentRole as TopologyRole;
   if (TOPOLOGY_ROLES.includes(currentRoleName)) roleSet.add(currentRoleName);
@@ -222,9 +223,10 @@ function latestSessionRecord(records: Array<Record<string, unknown>>, role: stri
   return [...records].reverse().find((record) => record.role === role && record.state === state) ?? null;
 }
 
-function readPacketCounts(packetRoot: string): TopologyUiSnapshot["packets"] {
+function readPacketCounts(packetRoot: string, board?: StatusBoard | null): TopologyUiSnapshot["packets"] {
   const inboxes: Record<string, number> = {};
-  if (!existsSync(packetRoot)) return { outbox: 0, inboxes, pending: 0 };
+  const pending = board ? activePendingPackets(board.pending_packets).length : 0;
+  if (!existsSync(packetRoot)) return { outbox: 0, inboxes, pending };
   let outbox = 0;
   try {
     for (const file of readdirSync(packetRoot)) {
@@ -235,9 +237,9 @@ function readPacketCounts(packetRoot: string): TopologyUiSnapshot["packets"] {
       if (file.endsWith("-inbox.jsonl")) inboxes[file.replace(".jsonl", "")] = count;
     }
   } catch {
-    return { outbox, inboxes, pending: outbox };
+    return { outbox, inboxes, pending };
   }
-  return { outbox, inboxes, pending: outbox };
+  return { outbox, inboxes, pending };
 }
 
 function stateLabel(state: string, alive: boolean | null): string {

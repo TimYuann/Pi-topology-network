@@ -7,6 +7,7 @@ import { createPacket } from "../../src/runtime/packet.ts";
 import registerPiTopology from "../../index.ts";
 import { createInitialStatusBoard, createMissionDraft } from "../../src/runtime/mission.ts";
 import { topology_send } from "../../src/transport/local-coms.ts";
+import { writePeerRegistry } from "../../src/transport/registry.ts";
 
 test("registers minimal Pi topology tool and command surface", () => {
   const tools: Array<{ name: string; promptSnippet?: string; promptGuidelines?: string[] }> = [];
@@ -218,6 +219,66 @@ test("topology slash command preflights and initializes a mission from a task ca
   assert.doesNotMatch(spawn, /topology-supervisor\.sh/);
   assert.doesNotMatch(spawn, /open -n -a/);
   assert.doesNotMatch(spawn, /launch\/hq\.sh/);
+});
+
+test("topology status recommends continuing when HQ is already live", async () => {
+  const commands: Record<string, { handler: (args: string, ctx: { cwd: string }) => Promise<string> }> = {};
+  const pi = {
+    registerTool() {},
+    registerCommand(name: string, command: { handler: (args: string, ctx: { cwd: string }) => Promise<string> }) {
+      commands[name] = command;
+    },
+    on() {},
+    registerFlag() {},
+    getFlag() {
+      return undefined;
+    },
+  };
+  registerPiTopology(pi);
+
+  const cwd = await mkdtemp(join(tmpdir(), "pi-topology-status-hq-live-"));
+  const previousComsDir = process.env.PI_COMS_DIR;
+  const mission = createMissionDraft({
+    project: "status-hq-live",
+    workdir: cwd,
+    objective: "Resume without stale launch advice",
+    allowed_paths: [cwd],
+  });
+  mission.progress.current_step = "Owner approved mission; HQ launch requested.";
+  const board = createInitialStatusBoard(mission);
+  board.runtime_phase = "spawning";
+  board.next_gate.owner_required = false;
+  board.peer_status.hq = {
+    ...board.peer_status.hq,
+    state: "alive",
+    alive: true,
+    session_id: "hq-live",
+    last_heartbeat_at: "2026-06-16T00:00:00.000Z",
+  };
+  await mkdir(join(cwd, ".pi/topology"), { recursive: true });
+  await writeFile(join(cwd, ".pi/topology/mission-card.json"), `${JSON.stringify(mission, null, 2)}\n`, "utf8");
+  await writeFile(join(cwd, ".pi/topology/status-board.json"), `${JSON.stringify(board, null, 2)}\n`, "utf8");
+  await writeFile(join(cwd, ".pi/topology/incident-log.jsonl"), "", "utf8");
+  await writeFile(join(cwd, ".pi/topology/runtime-events.jsonl"), "", "utf8");
+  await writeFile(join(cwd, ".pi/topology/sessions.jsonl"), "", "utf8");
+  try {
+    process.env.PI_COMS_DIR = await mkdtemp(join("/private/tmp", "pi-topology-status-hq-live-registry-"));
+    await writePeerRegistry(process.env.PI_COMS_DIR, "status-hq-live", {
+      name: "hq",
+      role: "hq",
+      session_id: "hq-live",
+      endpoint: "memory://status-hq-live/hq-live",
+      heartbeat_at: new Date().toISOString(),
+      context_used_pct: 2,
+    });
+
+    const status = await commands.topology.handler("status", { cwd });
+
+    assert.match(status, /HQ is already live/);
+    assert.doesNotMatch(status, /launch HQ/i);
+  } finally {
+    restoreEnv("PI_COMS_DIR", previousComsDir);
+  }
 });
 
 test("bare topology command drafts mission from latest assistant task card", async () => {
@@ -791,6 +852,66 @@ test("topology_list and topology_get are compact by default", async () => {
     assert.match(get.content[0].text, /topology_get/);
     assert.match(get.content[0].text, /summary=A very long review body should stay out of inline packet inspection by default\./);
     assert.doesNotMatch(get.content[0].text, /"packet":/);
+  } finally {
+    restoreEnv("PI_COMS_DIR", previousComsDir);
+  }
+});
+
+test("topology_list stays compact even when verbose is requested", async () => {
+  const registered: Record<string, { execute: Function }> = {};
+  const pi = {
+    registerTool(tool: { name: string; execute: Function }) {
+      registered[tool.name] = tool;
+    },
+    registerCommand() {},
+    on() {},
+    registerFlag() {},
+    getFlag() {
+      return undefined;
+    },
+  };
+  registerPiTopology(pi);
+
+  const cwd = await mkdtemp(join(tmpdir(), "pi-topology-list-no-inline-"));
+  const ctx = { cwd };
+  const previousComsDir = process.env.PI_COMS_DIR;
+  try {
+    process.env.PI_COMS_DIR = await mkdtemp(join("/private/tmp", "pi-topology-list-no-inline-registry-"));
+    await registered.topology_init_mission.execute(
+      "init",
+      { objective: "Keep packet list compact", project: "compact-list", allowed_paths: [cwd] },
+      undefined,
+      undefined,
+      ctx,
+    );
+    const request = await registered.topology_send.execute(
+      "send-request",
+      {
+        type: "REQUEST",
+        from: "topology-supervisor",
+        to: "hq",
+        body: {
+          task: "Summarize a long instruction without replaying the JSON packet.",
+          note: "This sentence should appear as a compact summary, not as a raw JSON body.",
+        },
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const list = await registered.topology_list.execute(
+      "list",
+      { to: "hq", verbose: true },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    assert.match(list.content[0].text, /topology_list hq/);
+    assert.match(list.content[0].text, new RegExp(request.details.packet.packet_id));
+    assert.doesNotMatch(list.content[0].text, /"packet_id":/);
+    assert.doesNotMatch(list.content[0].text, /"body":/);
   } finally {
     restoreEnv("PI_COMS_DIR", previousComsDir);
   }

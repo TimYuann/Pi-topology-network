@@ -65,6 +65,7 @@ test("watchdog reports owner gate, missing checkpoint, and overdue packet", () =
   const board = createInitialStatusBoard(draft);
   board.pending_packets.push({
     packet_id: "pkt_1",
+    type: "REQUEST",
     deadline_at: "2026-06-16T00:00:00.000Z",
   });
 
@@ -74,4 +75,35 @@ test("watchdog reports owner gate, missing checkpoint, and overdue packet", () =
     result.findings.map((finding) => finding.type).sort(),
     ["checkpoint_missing", "owner_gate", "packet_overdue"],
   );
+});
+
+test("watchdog ignores non-active control packets when checking overdue pending work", () => {
+  const draft = createMissionDraft({
+    project: "dogfood",
+    workdir: "/work/project",
+    objective: "Ignore old control packet noise",
+    allowed_paths: ["/work/project/docs"],
+  });
+  const board = createInitialStatusBoard(draft);
+  board.last_checkpoint_at = "2026-06-16T00:00:00.000Z";
+  board.next_gate.owner_required = false;
+  board.pending_packets.push(
+    {
+      packet_id: "pkt_status",
+      type: "STATUS",
+      state: "delivered",
+      deadline_at: "2026-06-16T00:00:00.000Z",
+    },
+    {
+      packet_id: "pkt_verdict",
+      type: "VERDICT",
+      state: "delivered",
+      deadline_at: "2026-06-16T00:00:00.000Z",
+    },
+  );
+
+  const result = runWatchdogCheck(board, [], new Date("2026-06-16T00:10:00.000Z"));
+
+  assert.equal(result.summary_status, "ok");
+  assert.deepEqual(result.findings, []);
 });

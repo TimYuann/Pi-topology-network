@@ -338,7 +338,12 @@ export function runWatchdogCheck(board: StatusBoard, incidents: unknown[], now =
   if (board.next_gate?.owner_required) {
     findings.push({ type: "owner_gate", detail: board.next_gate.reason || board.next_gate.type });
   }
-  for (const packet of board.pending_packets) {
+  for (const packet of board.pending_packets.filter((packet) => {
+    const state = String(packet.state ?? "");
+    if (["closed", "report_acknowledged", "ignored", "stale"].includes(state)) return false;
+    const type = String(packet.type ?? "");
+    return type === "REQUEST" || type === "REPORT" || type === "INCIDENT";
+  })) {
     const due = String(packet.deadline_at ?? packet.sla_due_at ?? "");
     if (due && Date.parse(due) < now.getTime()) {
       findings.push({ type: "packet_overdue", detail: String(packet.packet_id ?? packet.msg_id ?? "unknown packet") });

@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInitialStatusBoard, createMissionDraft, normalizeMissionCard, runWatchdogCheck, validateMissionCard, type MissionCard, type StatusBoard } from "../runtime/mission.ts";
-import { reconcileBoardWithLiveRegistry, reconcileBoardWithSessionRecords } from "../runtime/status-board.ts";
+import { activePendingPackets, reconcileBoardWithLiveRegistry, reconcileBoardWithSessionRecords } from "../runtime/status-board.ts";
 import { buildRoleLaunchPlan, writeMissionLaunchScriptsSync, writeRoleLaunchScript } from "../runtime/spawn.ts";
 import { markMissionProgressForHqLaunch, markRoleLaunchRequested } from "../runtime/status-board.ts";
 import { appendEventSync } from "../state/event-log.ts";
@@ -136,6 +136,7 @@ function renderPreflight(cwd: string, options: { detailed?: boolean; supervisorA
   const incidentCount = countJsonl(state.incidentPath);
   const sessionRecordCount = countJsonl(state.sessionLedgerPath);
   const packetCount = countJsonl(state.outboxPath);
+  const pendingPackets = activePendingPackets(board?.pending_packets ?? []);
   const supervisorScript = path.join(cwd, ".pi", "topology", "launch", "topology-supervisor.sh");
   const supervisorLaunch = currentTerminalCommand(cwd, supervisorScript);
   const lines = [
@@ -152,20 +153,11 @@ function renderPreflight(cwd: string, options: { detailed?: boolean; supervisorA
     `incidents: ${incidentCount}`,
     `session_records: ${sessionRecordCount}`,
     `outbox_packets: ${packetCount}`,
-    ...(board?.pending_packets?.length ? [`pending_packets: ${board.pending_packets.length}`] : []),
+    ...(pendingPackets.length ? [`pending_packets: ${pendingPackets.length}`] : []),
     `validation: ${validation.ok ? "ok" : validation.errors.join("; ")}`,
     "",
     "Recommended next:",
-    ...(options.supervisorActive
-      ? [
-        "The current session is already topology-supervisor.",
-        "Continue here: review the mission card, ask owner approval, then launch HQ and needed worker sessions.",
-      ]
-      : [
-        "Launch the Supervisor entry session:",
-        supervisorLaunch,
-        "Supervisor will review the mission card, ask owner approval, then launch HQ and needed worker sessions.",
-      ]),
+    ...recommendedNextLines({ board, supervisorActive: options.supervisorActive, supervisorLaunch }),
   ];
   if (options.detailed) {
     lines.push(
@@ -180,6 +172,37 @@ function renderPreflight(cwd: string, options: { detailed?: boolean; supervisorA
     );
   }
   return lines.join("\n");
+}
+
+function recommendedNextLines(options: {
+  board: StatusBoard | null;
+  supervisorActive?: boolean;
+  supervisorLaunch: string;
+}): string[] {
+  const hq = options.board?.peer_status?.hq;
+  if (hq?.alive === true || hq?.state === "alive") {
+    return [
+      "HQ is already live.",
+      "Continue with dispatch/status review; do not launch another HQ unless the owner explicitly requests a replacement.",
+    ];
+  }
+  if (options.supervisorActive) {
+    if (hq?.state === "launch_requested") {
+      return [
+        "The current session is already topology-supervisor.",
+        "HQ launch has already been requested; wait for the dashboard/registry heartbeat before retrying.",
+      ];
+    }
+    return [
+      "The current session is already topology-supervisor.",
+      "Continue here: review the mission card, ask owner approval, then launch HQ only if the launch set requires it.",
+    ];
+  }
+  return [
+    "Launch the Supervisor entry session:",
+    options.supervisorLaunch,
+    "Supervisor will review the mission card, ask owner approval, then launch HQ and needed worker sessions.",
+  ];
 }
 
 async function initMission(cwd: string, objective: string, ctx: CommandContext, options: {

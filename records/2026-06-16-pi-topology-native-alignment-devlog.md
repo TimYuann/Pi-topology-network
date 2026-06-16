@@ -317,6 +317,52 @@ PI_OFFLINE=1 pi --offline --no-session -e /Users/yuantian/Documents/Coding/omp-t
 - 真正需要 owner gate / phase gate 时，再把选择点升级为 `ctx.ui.select` 或 `ctx.ui.custom` overlay。
 - Dashboard / footer 继续使用官方 `ctx.ui.setStatus / setWidget`。
 
+## 23:05 - 正式 package/session 路径截图回归
+
+人工按 step-by-step smoke 验证：
+
+1. `pi install /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology` 后，`pi list` 可见本地 package。
+2. 普通 `pi --offline --approve` 启动，不使用 `pi -e`。
+3. `/` 命令列表可见 `/topology` 与 `skill:topology-runtime`。
+4. `/skill:topology-runtime` 正常加载。
+5. 裸 `/topology` 不退出 Pi，当前 session 成为 `topology-supervisor`。
+6. Dashboard 立即出现，初始只显示 Supervisor live，符合预期。
+7. `/topology spawn hq` 成功派生 HQ，Supervisor / HQ 两个 session 的 Dashboard 都能显示 peer live 和 context 百分比。
+8. HQ session 中 slash/skill 能力正常。
+
+本轮暴露的三个问题：
+
+1. `topology_list` 又出现 raw JSON inline。
+   - 根因：默认 compact 没坏，但 tool schema 仍暴露 `verbose`，模型/HQ 可传 `verbose=true`，导致完整 packet array 进入 transcript。
+   - 修正：`topology_list` 永远返回 compact summary；完整 packet 仍保留在 tool details 和 JSONL 证据里。
+2. `/topology status` 在 HQ 已 live 后仍建议 launch HQ。
+   - 根因：recommended-next 只看当前 session 是否 supervisor，没有优先使用 live registry / board 中 HQ alive 事实。
+   - 修正：HQ live 时推荐继续 dispatch/status review，不再建议重复 launch HQ。
+3. Dashboard / status pending 噪声过大。
+   - 根因：发送侧把 `STATUS` 和 terminal `VERDICT` 也写入 active pending lifecycle，UI 还把 raw outbox count 当 pending。
+   - 修正：active pending 仅统计 `REQUEST / REPORT / INCIDENT`，`STATUS / VERDICT` 只作为控制/证据流；Dashboard pending 改用 status-board active pending，不再等于 outbox 历史总数。
+
+新增回归测试：
+
+- `topology_list stays compact even when verbose is requested`
+- `topology status recommends continuing when HQ is already live`
+- `packet lifecycle does not count status or verdict packets as active pending work`
+- `topology UI pending count uses active status-board packets instead of raw outbox history`
+- `watchdog ignores non-active control packets when checking overdue pending work`
+
+验证：
+
+```bash
+cd packages/pi-topology
+npm run smoke
+```
+
+结果：
+
+- 72/72 tests passed
+- strip-types import ok
+- `npm pack --dry-run` ok
+
 ## 剩余重构面
 
 下一批仍值得继续做，但不在本次已完成范围内：

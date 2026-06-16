@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createInitialStatusBoard, createMissionDraft, normalizeMissionCard, runWatchdogCheck, validateMissionCard, type WorkerRole } from "../runtime/mission.ts";
 import { createPacket, type PacketType } from "../runtime/packet.ts";
 import { buildRoleLaunchPlan, writeMissionLaunchScripts, writeMissionLaunchScriptsSync, writeRoleLaunchScript } from "../runtime/spawn.ts";
-import { applyPacketLifecycle, markMissionProgressForHqLaunch, markRoleLaunchRequested, reconcileBoardWithLiveRegistry, reconcileBoardWithSessionRecords } from "../runtime/status-board.ts";
+import { activePendingPackets, applyPacketLifecycle, markMissionProgressForHqLaunch, markRoleLaunchRequested, reconcileBoardWithLiveRegistry, reconcileBoardWithSessionRecords } from "../runtime/status-board.ts";
 import { appendEvent } from "../state/event-log.ts";
 import { rememberClosedPacket } from "../state/packet-memory.ts";
 import { appendSessionRecord, appendSessionRecordSync } from "../state/session-ledger.ts";
@@ -146,8 +146,8 @@ export function registerTopologyTools(pi: PiLike): void {
           `incident_log: ${loaded.incidentPath}`,
           `session_ledger: ${loaded.sessionLedgerPath}`,
           `session_records: ${countJsonl(loaded.sessionLedgerPath)}`,
-          `pending_packets: ${loaded.board.pending_packets.length}`,
-          ...formatPendingPackets(loaded.board.pending_packets),
+          `pending_packets: ${activePendingPackets(loaded.board.pending_packets).length}`,
+          ...formatPendingPackets(activePendingPackets(loaded.board.pending_packets)),
         ].join("\n"),
         loaded,
       );
@@ -554,7 +554,6 @@ export function registerTopologyTools(pi: PiLike): void {
       required: ["to"],
       properties: {
         to: { type: "string" },
-        verbose: { type: "boolean" },
       },
     },
     async execute(_id: string, params: { to: WorkerRole | "topology-supervisor" | "owner"; verbose?: boolean }, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
@@ -571,9 +570,7 @@ export function registerTopologyTools(pi: PiLike): void {
           evidence: { transport: [localTransportRoot(loaded.mission.project)], business: [packet.body], inference: [] },
         });
       }
-      const text = params.verbose
-        ? JSON.stringify(packets, null, 2)
-        : formatPacketSummaries(packets, { title: `topology_list ${params.to}`, empty: `No packets for ${params.to}` });
+      const text = formatPacketSummaries(packets, { title: `topology_list ${params.to}`, empty: `No packets for ${params.to}` });
       return toolText(text, { ok: true, packets });
     },
   });

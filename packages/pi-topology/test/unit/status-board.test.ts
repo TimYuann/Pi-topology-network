@@ -255,3 +255,35 @@ test("packet lifecycle closes a dispatched task only after report acknowledgemen
   assert.equal(closed.peer_status.hq.last_packet_at, "2026-06-16T00:00:03.000Z");
   assert.equal(closed.peer_status.runner.last_packet_at, "2026-06-16T00:00:03.000Z");
 });
+
+test("packet lifecycle does not count status or verdict packets as active pending work", () => {
+  const mission = createMissionDraft({
+    project: "status-noise",
+    workdir: "/tmp/status-noise",
+    objective: "Do not let control packets inflate pending counts",
+    allowed_paths: ["/tmp/status-noise"],
+  });
+  const board = createInitialStatusBoard(mission);
+  const status = createPacket({
+    mission_id: mission.mission_id,
+    type: "STATUS",
+    from: "topology-supervisor",
+    to: "hq",
+    body: { status: "ack_received", next: "proceed_with_intake_report" },
+    request_msg_id: "pkt_old_request",
+  });
+  const verdict = createPacket({
+    mission_id: mission.mission_id,
+    type: "VERDICT",
+    from: "topology-supervisor",
+    to: "hq",
+    body: { verdict: "GO", next: "stand_down" },
+  });
+
+  const afterStatus = applyPacketLifecycle(board, status, { liveDeliveryStatus: "delivered", now: "2026-06-16T00:00:00.000Z" });
+  const afterVerdict = applyPacketLifecycle(afterStatus, verdict, { liveDeliveryStatus: "delivered", now: "2026-06-16T00:00:01.000Z" });
+
+  assert.equal(afterVerdict.pending_packets.length, 0);
+  assert.equal(afterVerdict.peer_status.hq.last_packet_at, "2026-06-16T00:00:01.000Z");
+  assert.equal(afterVerdict.peer_status["topology-supervisor"].last_packet_at, "2026-06-16T00:00:01.000Z");
+});

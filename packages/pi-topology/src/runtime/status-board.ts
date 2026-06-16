@@ -226,17 +226,32 @@ export function applyPacketLifecycle(board: StatusBoard, packet: TopologyPacket,
 
   if (packet.type === "STATUS" && packet.request_msg_id) {
     markPacketInProgress(next, packet, now);
+    appendPacketEvidence(next, packet, "sent");
+    return next;
   }
 
   if (packet.type === "REPORT" && packet.request_msg_id) {
     markPacketReported(next, packet, now);
   }
 
-  if (packet.type !== "ACK") {
+  if (packet.type !== "ACK" && shouldTrackAsPending(packet)) {
     upsertPacketRecord(next, createLifecycleRecord(packet, params.liveDeliveryStatus, now));
   }
   appendPacketEvidence(next, packet, "sent");
   return next;
+}
+
+export function activePendingPackets(pendingPackets: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  return pendingPackets.filter((packet) => {
+    const state = String(packet.state ?? "");
+    if (["closed", "report_acknowledged", "ignored", "stale"].includes(state)) return false;
+    const type = String(packet.type ?? "");
+    return type === "REQUEST" || type === "REPORT" || type === "INCIDENT";
+  });
+}
+
+function shouldTrackAsPending(packet: TopologyPacket): boolean {
+  return packet.type === "REQUEST" || packet.type === "REPORT" || packet.type === "INCIDENT";
 }
 
 function cloneBoard(board: StatusBoard): StatusBoard {

@@ -155,6 +155,43 @@ test("topology UI does not prelist non-existent peers before they are discovered
   restoreEnv("PI_COMS_DIR", previousComsDir);
 });
 
+test("topology UI pending count uses active status-board packets instead of raw outbox history", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "pi-topology-ui-active-pending-"));
+  const previousComsDir = process.env.PI_COMS_DIR;
+  const mission = createMissionDraft({
+    project: "ui-active-pending",
+    workdir: cwd,
+    objective: "Show active pending only",
+    allowed_paths: [cwd],
+  });
+  const board = createInitialStatusBoard(mission);
+  board.pending_packets.push(
+    { packet_id: "pkt_request", type: "REQUEST", from: "topology-supervisor", to: "hq", state: "delivered" },
+    { packet_id: "pkt_status", type: "STATUS", from: "topology-supervisor", to: "hq", state: "delivered" },
+    { packet_id: "pkt_verdict", type: "VERDICT", from: "topology-supervisor", to: "hq", state: "delivered" },
+  );
+  await mkdir(join(cwd, ".pi/topology"), { recursive: true });
+  await writeFile(join(cwd, ".pi/topology/mission-card.json"), `${JSON.stringify(mission, null, 2)}\n`, "utf8");
+  await writeFile(join(cwd, ".pi/topology/status-board.json"), `${JSON.stringify(board, null, 2)}\n`, "utf8");
+  await writeFile(join(cwd, ".pi/topology/sessions.jsonl"), "", "utf8");
+  await writeFile(join(cwd, ".pi/topology/incident-log.jsonl"), "", "utf8");
+  process.env.PI_COMS_DIR = await mkdtemp(join("/private/tmp", "pi-topology-ui-active-pending-registry-"));
+  await mkdir(join(process.env.PI_COMS_DIR, "projects", "ui-active-pending", "packets"), { recursive: true });
+  await writeFile(
+    join(process.env.PI_COMS_DIR, "projects", "ui-active-pending", "packets", "outbox.jsonl"),
+    ["old-1", "old-2", "old-3"].map((packet_id) => JSON.stringify({ packet_id })).join("\n") + "\n",
+    "utf8",
+  );
+
+  const snapshot = buildTopologyUiSnapshot(cwd, "topology-supervisor");
+  const line = compactStatusLine(snapshot);
+
+  assert.equal(snapshot.packets.outbox, 3);
+  assert.equal(snapshot.packets.pending, 1);
+  assert.match(line, /out=3 pending=1/);
+  restoreEnv("PI_COMS_DIR", previousComsDir);
+});
+
 test("installTopologyUi publishes status and widget", () => {
   const calls: Array<{ kind: string; key: string; value: unknown }> = [];
   installTopologyUi(
