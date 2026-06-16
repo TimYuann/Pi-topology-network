@@ -1,0 +1,1 @@
+{"event_type":"schema","version":1,"required_fields":["event_id","event_type","timestamp","mission_id","slice_id","actor","target","severity","payload_ref"],"allowed_event_types":["session_spawned","session_heartbeat","packet_sent","lifecycle_ack","business_report","verify_request","incident","owner_gate","context_health","damage_control_block","checkpoint","verdict"]}

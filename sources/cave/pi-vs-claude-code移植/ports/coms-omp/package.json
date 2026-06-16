@@ -1,0 +1,12 @@
+{
+  "name": "omp-coms-port",
+  "private": true,
+  "type": "module",
+  "description": "OMP coms extension port",
+  "omp": {
+    "extensions": ["./extensions/coms-omp-lite.ts"]
+  },
+  "dependencies": {
+    "yaml": "^2.8.0"
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "mission_id": "p6-phase-d-8h-001",
+  "runtime": "pi",
+  "phase": "phase-d",
+  "runtime_phase": "intake",
+  "project": "customs-long",
+  "workdir": "/Users/yuantian/Documents/Coding/ekunCustomsWms",
+  "owner_goal": "",
+  "active_slice": null,
+  "owner_decisions": [],
+  "peer_status": {
+    "topology-supervisor": {
+      "state": "entry",
+      "session_id": null,
+      "alive": null,
+      "context_used_pct": null,
+      "last_heartbeat_at": null,
+      "last_packet_at": null
+    },
+    "hq": {
+      "state": "not_spawned",
+      "session_id": null,
+      "alive": null,
+      "context_used_pct": null,
+      "last_heartbeat_at": null,
+      "last_packet_at": null
+    },
+    "repair": {
+      "state": "not_spawned",
+      "session_id": null,
+      "alive": null,
+      "context_used_pct": null,
+      "last_heartbeat_at": null,
+      "last_packet_at": null
+    },
+    "runner": {
+      "state": "not_spawned",
+      "session_id": null,
+      "alive": null,
+      "context_used_pct": null,
+      "last_heartbeat_at": null,
+      "last_packet_at": null
+    },
+    "oracle": {
+      "state": "not_spawned",
+      "session_id": null,
+      "alive": null,
+      "context_used_pct": null,
+      "last_heartbeat_at": null,
+      "last_packet_at": null
+    }
+  },
+  "pending_packets": [],
+  "active_workers": [],
+  "allowed_paths": [
+    "/Users/yuantian/Documents/Coding/ekunCustomsWms/docs",
+    "/Users/yuantian/Documents/Coding/ekunCustomsWms/knowledge/core",
+    "/Users/yuantian/Documents/Coding/ekunCustomsWms/knowledge/tests"
+  ],
+  "forbidden_actions": [
+    "git add",
+    "git commit",
+    "git push",
+    "destructive commands",
+    "write outside allowed_paths"
+  ],
+  "next_gate": {
+    "type": "mission_approval",
+    "owner_required": true,
+    "reason": "Owner must approve mission card before dynamic spawn.",
+    "created_at": null
+  },
+  "last_checkpoint_at": null,
+  "next_checkpoint_due_at": null,
+  "context_health": {
+    "high_watermark_pct": 80,
+    "roles_over_high_watermark": []
+  },
+  "incidents": [],
+  "evidence_index": {
+    "transport": [],
+    "business": [],
+    "inference": []
+  },
+  "future_ui": {
+    "event_log_path": "templates/runtime-events.phase-d.jsonl",
+    "graph_nodes": [],
+    "graph_edges": []
+  }
+}

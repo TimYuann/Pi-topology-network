@@ -1,0 +1,7 @@
+.DS_Store
+node_modules/
+.pi/
+sources/external/pi-crew/
+undefined
+*.log
+npm-debug.log*
