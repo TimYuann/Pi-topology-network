@@ -8,7 +8,7 @@ import { createPacket, type PacketType } from "../runtime/packet.ts";
 import { buildRoleLaunchPlan, writeMissionLaunchScripts, writeMissionLaunchScriptsSync, writeRoleLaunchScript } from "../runtime/spawn.ts";
 import { activePendingPackets, applyPacketLifecycle, markMissionProgressForHqLaunch, markRoleLaunchRequested, reconcileBoardWithLiveRegistry, reconcileBoardWithSessionRecords } from "../runtime/status-board.ts";
 import { appendEvent } from "../state/event-log.ts";
-import { rememberClosedPacket } from "../state/packet-memory.ts";
+import { markPacketSeen, rememberClosedPacket } from "../state/packet-memory.ts";
 import { appendSessionRecord, appendSessionRecordSync } from "../state/session-ledger.ts";
 import { topology_await as localTopologyAwait, topology_get as localTopologyGet, topology_list as localTopologyList, topology_send as localTopologySend } from "../transport/local-coms.ts";
 import { netComsStatus } from "../transport/net-coms.ts";
@@ -567,14 +567,7 @@ export function registerTopologyTools(pi: PiLike): void {
       const rawPackets = await localTopologyList(localTransportRoot(loaded.mission.project), loaded.mission.project, params.to);
       const packets = filterPacketsForMission(rawPackets, loaded.mission.mission_id, params.include_history);
       for (const packet of packets) {
-        await appendEvent(loaded.eventPath, {
-          event_type: "packet_received",
-          mission_id: loaded.mission.mission_id,
-          packet_id: packet.packet_id,
-          to: params.to,
-          source: "topology_list",
-          evidence: { transport: [localTransportRoot(loaded.mission.project)], business: [packet.body], inference: [] },
-        });
+        await appendPacketReceivedEventOnce(loaded, params.to, packet, "topology_list");
       }
       const text = formatPacketSummaries(packets, { title: `topology_list ${params.to}`, empty: `No packets for ${params.to}` });
       return toolText(text, { ok: true, packets, filtered_history_count: rawPackets.length - packets.length });
@@ -625,14 +618,7 @@ export function registerTopologyTools(pi: PiLike): void {
         pollIntervalMs: params.poll_interval_ms,
       });
       for (const packet of result.packets) {
-        await appendEvent(loaded.eventPath, {
-          event_type: "packet_received",
-          mission_id: loaded.mission.mission_id,
-          packet_id: packet.packet_id,
-          to: params.to,
-          source: "topology_await",
-          evidence: { transport: [localTransportRoot(loaded.mission.project)], business: [packet.body], inference: [] },
-        });
+        await appendPacketReceivedEventOnce(loaded, params.to, packet, "topology_await");
       }
       return toolText(JSON.stringify(result, null, 2), { ok: true, ...result });
     },
@@ -663,14 +649,7 @@ export function registerTopologyTools(pi: PiLike): void {
       const rawResult = await localTopologyGet(localTransportRoot(loaded.mission.project), loaded.mission.project, params.to, params.packet_id);
       const result = filterLookupForMission(rawResult, loaded.mission.mission_id, params.include_history);
       if (result.status === "complete" && result.packet) {
-        await appendEvent(loaded.eventPath, {
-          event_type: "packet_received",
-          mission_id: loaded.mission.mission_id,
-          packet_id: result.packet.packet_id,
-          to: params.to,
-          source: "topology_get",
-          evidence: { transport: [localTransportRoot(loaded.mission.project)], business: [result.packet.body], inference: [] },
-        });
+        await appendPacketReceivedEventOnce(loaded, params.to, result.packet, "topology_get");
       }
       const text = params.verbose
         ? JSON.stringify(result, null, 2)
@@ -808,6 +787,23 @@ function ensureSessionLedger(cwd: string, mission: ReturnType<typeof createMissi
 
 function localTransportRoot(project: string): string {
   return process.env.PI_COMS_DIR ?? path.join("/tmp", `pi-topology-${project}`);
+}
+
+async function appendPacketReceivedEventOnce(
+  loaded: Extract<ReturnType<typeof loadRuntimeState>, { ok: true }>,
+  to: WorkerRole | "topology-supervisor" | "owner",
+  packet: { packet_id: string; body?: Record<string, unknown> },
+  source: "topology_list" | "topology_await" | "topology_get",
+): Promise<void> {
+  if (markPacketSeen(loaded.mission.mission_id, to, packet.packet_id)) return;
+  await appendEvent(loaded.eventPath, {
+    event_type: "packet_received",
+    mission_id: loaded.mission.mission_id,
+    packet_id: packet.packet_id,
+    to,
+    source,
+    evidence: { transport: [localTransportRoot(loaded.mission.project)], business: [packet.body], inference: [] },
+  });
 }
 
 function writeJson(file: string, value: unknown): void {

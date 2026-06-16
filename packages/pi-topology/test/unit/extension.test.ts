@@ -973,6 +973,74 @@ test("topology_list stays compact even when verbose is requested", async () => {
   }
 });
 
+test("topology_list and topology_get do not duplicate packet_received audit events", async () => {
+  const registered: Record<string, { execute: Function }> = {};
+  const pi = {
+    registerTool(tool: { name: string; execute: Function }) {
+      registered[tool.name] = tool;
+    },
+    registerCommand() {},
+    on() {},
+    registerFlag() {},
+    getFlag() {
+      return undefined;
+    },
+  };
+  registerPiTopology(pi);
+
+  const cwd = await mkdtemp(join(tmpdir(), "pi-topology-read-denoise-"));
+  const ctx = { cwd };
+  const previousComsDir = process.env.PI_COMS_DIR;
+  try {
+    process.env.PI_COMS_DIR = await mkdtemp(join("/private/tmp", "pi-topology-read-denoise-registry-"));
+    await registered.topology_init_mission.execute(
+      "init",
+      { objective: "Avoid duplicate durable receive events", project: "read-denoise", allowed_paths: [cwd] },
+      undefined,
+      undefined,
+      ctx,
+    );
+    const request = await registered.topology_send.execute(
+      "send-request",
+      {
+        type: "REQUEST",
+        from: "hq",
+        to: "runner",
+        body: { task: "Verify receive event idempotency" },
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    await registered.topology_list.execute("list-1", { to: "runner" }, undefined, undefined, ctx);
+    await registered.topology_list.execute("list-2", { to: "runner" }, undefined, undefined, ctx);
+    await registered.topology_get.execute(
+      "get-1",
+      { to: "runner", packet_id: request.details.packet.packet_id },
+      undefined,
+      undefined,
+      ctx,
+    );
+    await registered.topology_get.execute(
+      "get-2",
+      { to: "runner", packet_id: request.details.packet.packet_id },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const receiveEvents = (await readFile(join(cwd, ".pi/topology/runtime-events.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { event_type: string; packet_id?: string })
+      .filter((event) => event.event_type === "packet_received" && event.packet_id === request.details.packet.packet_id);
+    assert.equal(receiveEvents.length, 1);
+  } finally {
+    restoreEnv("PI_COMS_DIR", previousComsDir);
+  }
+});
+
 test("topology_init_mission ignores mission-card env from a different workspace", async () => {
   const registered: Record<string, { execute: Function }> = {};
   const pi = {

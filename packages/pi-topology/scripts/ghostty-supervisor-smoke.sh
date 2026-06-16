@@ -7,7 +7,7 @@ RUN_ROOT="${PI_TOPOLOGY_RUN_ROOT:-/tmp/pi-topology-dogfood}"
 WORKDIR="$RUN_ROOT/workdir"
 LOG_DIR="$RUN_ROOT/logs"
 LOG_FILE="$LOG_DIR/supervisor-smoke.log"
-SPAWN_MODE="${PI_TOPOLOGY_SPAWN_MODE:-launch}"
+SPAWN_MODE="${PI_TOPOLOGY_SPAWN_MODE:-${SPAWN_MODE:-launch}}"
 
 mkdir -p "$WORKDIR" "$LOG_DIR"
 
@@ -47,7 +47,7 @@ cd "$WORKDIR"
     --cname topology-supervisor \
     --project pi-topology-dogfood \
     --name "pi-topology dogfood supervisor" \
-    -p "You are testing the installed pi-topology package. First call topology_status. If there is no mission card, call topology_init_mission with objective 'Ghostty real Pi smoke for pi-topology package', project 'pi-topology-dogfood', and allowed_paths ['$WORKDIR']. Then call topology_status and topology_doctor. Send a STATUS packet from hq to runner using topology_send. Finally call topology_spawn_role with role 'hq', mode '$SPAWN_MODE', terminal_app 'Ghostty.app', initial_prompt 'ACK hq: spawned by topology-supervisor. Call topology_status, topology_doctor, topology_send a STATUS packet to runner, then topology_list for hq.', log_path '$LOG_DIR/hq-spawned.log', provider '$PI_PROVIDER', model '$PI_MODEL', and thinking '$PI_THINKING'. Keep the final answer concise and include which topology tools ran plus whether HQ launch was requested."
+    -p "You are testing the installed pi-topology package. First call topology_status. If there is no mission card, call topology_init_mission with objective 'Ghostty real Pi smoke for pi-topology package', project 'pi-topology-dogfood', and allowed_paths ['$WORKDIR']. Then call topology_status and topology_doctor. Send a STATUS packet from hq to runner using topology_send. Finally call topology_spawn_role with role 'hq', mode '$SPAWN_MODE', terminal_app 'Ghostty.app', initial_prompt 'ACK hq: spawned by topology-supervisor. Call topology_status, topology_doctor, topology_send a STATUS packet to runner, then topology_list for hq.', and log_path '$LOG_DIR/hq-spawned.log'. The spawned role launch plan is locked by the tool to provider minimax-cn, model MiniMax-M3, and thinking low; do not pass provider/model/thinking to topology_spawn_role. Keep the final answer concise and include which topology tools ran plus whether HQ launch was requested."
   echo
   date -u +"finished_at=%Y-%m-%dT%H:%M:%SZ"
 } 2>&1 | tee "$LOG_FILE"
