@@ -732,6 +732,62 @@ test("topology_spawn_role sanitizes unsafe log_path values", async () => {
   assert.equal(launchRecord?.log_path, join(cwd, ".pi/topology/runner.log"));
 });
 
+test("topology_spawn_role ignores caller-supplied provider and model overrides", async () => {
+  const registered: Record<string, { execute: Function }> = {};
+  const pi = {
+    registerTool(tool: { name: string; execute: Function }) {
+      registered[tool.name] = tool;
+    },
+    registerCommand() {},
+    on() {},
+    registerFlag() {},
+    getFlag() {
+      return undefined;
+    },
+  };
+  registerPiTopology(pi);
+
+  const cwd = await mkdtemp(join(tmpdir(), "pi-topology-spawn-model-lock-"));
+  const ctx = { cwd };
+  await registered.topology_init_mission.execute(
+    "init",
+    { objective: "Keep spawned roles on mission model", project: "dogfood", allowed_paths: [cwd] },
+    undefined,
+    undefined,
+    ctx,
+  );
+  const printed = await registered.topology_spawn_role.execute(
+    "spawn",
+    {
+      role: "hq",
+      mode: "print",
+      terminal_app: "ghostty",
+      provider: "anthropic",
+      model: "claude-sonnet-4",
+      thinking: "medium",
+    },
+    undefined,
+    undefined,
+    ctx,
+  );
+
+  const script = await readFile(join(cwd, ".pi/topology/launch/hq.sh"), "utf8");
+  const sessions = (await readFile(join(cwd, ".pi/topology/sessions.jsonl"), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as { role: string; state: string; provider?: string; model?: string; thinking?: string });
+  const hq = sessions.find((entry) => entry.role === "hq" && entry.state === "launch_printed");
+
+  assert.equal(printed.details.provider, "minimax-cn");
+  assert.equal(printed.details.model, "MiniMax-M3");
+  assert.match(script, /--provider' 'minimax-cn'/);
+  assert.match(script, /--model' 'MiniMax-M3'/);
+  assert.doesNotMatch(script, /claude-sonnet-4/);
+  assert.equal(hq?.provider, "minimax-cn");
+  assert.equal(hq?.model, "MiniMax-M3");
+  assert.equal(hq?.thinking, "low");
+});
+
 test("topology_send derives request_msg_id from ACK body for lifecycle tracking", async () => {
   const registered: Record<string, { execute: Function }> = {};
   const pi = {

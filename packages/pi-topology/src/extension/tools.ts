@@ -224,9 +224,6 @@ export function registerTopologyTools(pi: PiLike): void {
         terminal_app: { type: "string" },
         initial_prompt: { type: "string" },
         log_path: { type: "string" },
-        provider: { type: "string" },
-        model: { type: "string" },
-        thinking: { enum: ["off", "low", "medium", "high"] },
       },
     },
     async execute(_id: string, params: {
@@ -255,9 +252,9 @@ export function registerTopologyTools(pi: PiLike): void {
         packageRoot,
         missionPath: loaded.missionPath,
         registryRoot: process.env.PI_COMS_DIR ?? path.join("/tmp", `pi-topology-${loaded.mission.project}`),
-        provider: params.provider,
-        model: params.model,
-        thinking: params.thinking,
+        provider: DEFAULT_ROLE_PROVIDER,
+        model: DEFAULT_ROLE_MODEL,
+        thinking: DEFAULT_ROLE_THINKING,
         initialPrompt: params.initial_prompt,
       });
       const scriptPath = await writeRoleLaunchScript(ctx.cwd, plan, { logPath: safeLogPath });
@@ -273,9 +270,9 @@ export function registerTopologyTools(pi: PiLike): void {
         launch_command: `open -n -a '${params.terminal_app ?? "Ghostty"}' --args -e '${scriptPath}'`,
         log_path: safeLogPath,
         terminal_app: params.terminal_app ?? "Ghostty",
-        provider: params.provider ?? "minimax-cn",
-        model: params.model ?? "MiniMax-M3",
-        thinking: params.thinking,
+        provider: DEFAULT_ROLE_PROVIDER,
+        model: DEFAULT_ROLE_MODEL,
+        thinking: DEFAULT_ROLE_THINKING,
         evidence: {
           transport: [scriptPath, loaded.sessionLedgerPath],
           business: [`${params.role} ${mode === "launch" ? "launch requested" : "launch command printed"}`],
@@ -332,8 +329,8 @@ export function registerTopologyTools(pi: PiLike): void {
           scriptPath,
           log_path: safeLogPath,
           terminal_app: params.terminal_app ?? "Ghostty",
-          provider: params.provider ?? "minimax-cn",
-          model: params.model ?? "MiniMax-M3",
+          provider: DEFAULT_ROLE_PROVIDER,
+          model: DEFAULT_ROLE_MODEL,
         },
       );
     },
@@ -705,6 +702,10 @@ export function registerTopologyTools(pi: PiLike): void {
     },
   });
 }
+
+const DEFAULT_ROLE_PROVIDER = "minimax-cn";
+const DEFAULT_ROLE_MODEL = "MiniMax-M3";
+const DEFAULT_ROLE_THINKING = "low" as const;
 
 function missionPathFor(cwd: string): string {
   return missionPathForWorkspace(cwd);
