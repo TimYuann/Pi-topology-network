@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInitialStatusBoard, createMissionDraft, normalizeMissionCard, runWatchdogCheck, validateMissionCard, type WorkerRole } from "../runtime/mission.ts";
+import { missionPathForWorkspace } from "../runtime/mission-path.ts";
 import { createPacket, type PacketType } from "../runtime/packet.ts";
 import { buildRoleLaunchPlan, writeMissionLaunchScripts, writeMissionLaunchScriptsSync, writeRoleLaunchScript } from "../runtime/spawn.ts";
 import { activePendingPackets, applyPacketLifecycle, markMissionProgressForHqLaunch, markRoleLaunchRequested, reconcileBoardWithLiveRegistry, reconcileBoardWithSessionRecords } from "../runtime/status-board.ts";
@@ -514,14 +515,17 @@ export function registerTopologyTools(pi: PiLike): void {
       required: ["artifact_path"],
       properties: {
         artifact_path: { type: "string" },
+        full: { type: "boolean" },
+        max_bytes: { type: "number" },
       },
     },
-    async execute(_id: string, params: { artifact_path: string }, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
+    async execute(_id: string, params: { artifact_path: string; full?: boolean; max_bytes?: number }, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
       const loaded = loadRuntimeState(ctx.cwd);
       if (!loaded.ok) return toolText(loaded.message, loaded);
       const resolved = resolveArtifactPath(ctx.cwd, params.artifact_path);
       if (!resolved.ok) return toolText(resolved.message, resolved);
       const body = readFileSync(resolved.absolutePath, "utf8");
+      const formatted = formatArtifactRead(resolved.relativePath, body, params);
       await appendEvent(loaded.eventPath, {
         event_type: "artifact_read",
         mission_id: loaded.mission.mission_id,
@@ -532,10 +536,13 @@ export function registerTopologyTools(pi: PiLike): void {
           inference: [],
         },
       });
-      return toolText(body, {
+      return toolText(formatted.text, {
         ok: true,
         artifact_path: resolved.relativePath,
         absolute_path: resolved.absolutePath,
+        bytes: Buffer.byteLength(body, "utf8"),
+        truncated: formatted.truncated,
+        full: params.full === true,
       });
     },
   });
@@ -554,12 +561,14 @@ export function registerTopologyTools(pi: PiLike): void {
       required: ["to"],
       properties: {
         to: { type: "string" },
+        include_history: { type: "boolean" },
       },
     },
-    async execute(_id: string, params: { to: WorkerRole | "topology-supervisor" | "owner"; verbose?: boolean }, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
+    async execute(_id: string, params: { to: WorkerRole | "topology-supervisor" | "owner"; verbose?: boolean; include_history?: boolean }, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
       const loaded = loadRuntimeState(ctx.cwd);
       if (!loaded.ok) return toolText(loaded.message, loaded);
-      const packets = await localTopologyList(localTransportRoot(loaded.mission.project), loaded.mission.project, params.to);
+      const rawPackets = await localTopologyList(localTransportRoot(loaded.mission.project), loaded.mission.project, params.to);
+      const packets = filterPacketsForMission(rawPackets, loaded.mission.mission_id, params.include_history);
       for (const packet of packets) {
         await appendEvent(loaded.eventPath, {
           event_type: "packet_received",
@@ -571,7 +580,7 @@ export function registerTopologyTools(pi: PiLike): void {
         });
       }
       const text = formatPacketSummaries(packets, { title: `topology_list ${params.to}`, empty: `No packets for ${params.to}` });
-      return toolText(text, { ok: true, packets });
+      return toolText(text, { ok: true, packets, filtered_history_count: rawPackets.length - packets.length });
     },
   });
 
@@ -613,6 +622,7 @@ export function registerTopologyTools(pi: PiLike): void {
         type: params.type,
         request_msg_id: params.request_msg_id,
         after_timestamp: params.after_timestamp,
+        mission_id: loaded.mission.mission_id,
       }, {
         timeoutMs: params.timeout_ms,
         pollIntervalMs: params.poll_interval_ms,
@@ -647,12 +657,14 @@ export function registerTopologyTools(pi: PiLike): void {
         to: { type: "string" },
         packet_id: { type: "string" },
         verbose: { type: "boolean" },
+        include_history: { type: "boolean" },
       },
     },
-    async execute(_id: string, params: { to: WorkerRole | "topology-supervisor" | "owner"; packet_id: string; verbose?: boolean }, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
+    async execute(_id: string, params: { to: WorkerRole | "topology-supervisor" | "owner"; packet_id: string; verbose?: boolean; include_history?: boolean }, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
       const loaded = loadRuntimeState(ctx.cwd);
       if (!loaded.ok) return toolText(loaded.message, loaded);
-      const result = await localTopologyGet(localTransportRoot(loaded.mission.project), loaded.mission.project, params.to, params.packet_id);
+      const rawResult = await localTopologyGet(localTransportRoot(loaded.mission.project), loaded.mission.project, params.to, params.packet_id);
+      const result = filterLookupForMission(rawResult, loaded.mission.mission_id, params.include_history);
       if (result.status === "complete" && result.packet) {
         await appendEvent(loaded.eventPath, {
           event_type: "packet_received",
@@ -695,7 +707,7 @@ export function registerTopologyTools(pi: PiLike): void {
 }
 
 function missionPathFor(cwd: string): string {
-  return process.env.PI_TOPOLOGY_MISSION_CARD ?? path.join(cwd, ".pi", "topology", "mission-card.json");
+  return missionPathForWorkspace(cwd);
 }
 
 function resolvePackageRoot(): string {
@@ -866,6 +878,48 @@ function formatPacketLookup(
 ): string {
   if (result.status !== "complete" || !result.packet) return `topology_get ${packetId}: ${result.status}`;
   return [`topology_get ${packetId}`, formatPacketSummaryLine(result.packet)].join("\n");
+}
+
+function filterPacketsForMission<T extends { mission_id: string }>(packets: T[], missionId: string, includeHistory?: boolean): T[] {
+  if (includeHistory) return packets;
+  return packets.filter((packet) => packet.mission_id === missionId);
+}
+
+function filterLookupForMission<T extends { status: string; packet?: { mission_id: string } }>(
+  result: T,
+  missionId: string,
+  includeHistory?: boolean,
+): T {
+  if (includeHistory || result.status !== "complete" || !result.packet || result.packet.mission_id === missionId) return result;
+  return { ...result, status: "pending", packet: undefined };
+}
+
+function formatArtifactRead(
+  artifactPath: string,
+  body: string,
+  params: { full?: boolean; max_bytes?: number },
+): { text: string; truncated: boolean } {
+  if (params.full === true) return { text: body, truncated: false };
+  const maxChars = clampPreviewSize(params.max_bytes);
+  const truncated = body.length > maxChars;
+  const preview = truncated ? body.slice(0, maxChars) : body;
+  return {
+    text: [
+      "topology_read_artifact",
+      `artifact_path: ${artifactPath}`,
+      `bytes: ${Buffer.byteLength(body, "utf8")}`,
+      `truncated: ${truncated ? "yes" : "no"}`,
+      "---",
+      preview,
+      ...(truncated ? ["", "[truncated: call topology_read_artifact with full=true to read the complete artifact]"] : []),
+    ].join("\n"),
+    truncated,
+  };
+}
+
+function clampPreviewSize(value: number | undefined): number {
+  if (typeof value !== "number" || Number.isNaN(value)) return 6_000;
+  return Math.max(1_000, Math.min(Math.floor(value), 20_000));
 }
 
 function formatPacketSummaryLine(packet: {

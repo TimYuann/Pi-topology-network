@@ -79,6 +79,7 @@ export interface PacketGetResult {
 }
 
 export interface PacketAwaitFilter {
+  mission_id?: string;
   from?: TopologyRole;
   type?: TopologyPacket["type"];
   request_msg_id?: string;
@@ -167,6 +168,7 @@ export const topologyAwait = topology_await;
 function filterPackets(packets: TopologyPacket[], filter: PacketAwaitFilter): TopologyPacket[] {
   const after = filter.after_timestamp ? Date.parse(filter.after_timestamp) : null;
   return packets.filter((packet) => {
+    if (filter.mission_id && packet.mission_id !== filter.mission_id) return false;
     if (filter.from && packet.from !== filter.from) return false;
     if (filter.type && packet.type !== filter.type) return false;
     if (filter.request_msg_id && packet.request_msg_id !== filter.request_msg_id && packet.body?.reply_to !== filter.request_msg_id) return false;

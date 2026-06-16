@@ -81,7 +81,8 @@ test("hq launch plan is dispatch-first and cannot inherit executor tools from a 
   assert.equal(tools.includes("write"), false);
   assert.equal(plan.args.includes(TOPOLOGY_HQ_INITIAL_PROMPT), false);
   const prompt = plan.args.at(-1) ?? "";
-  assert.match(prompt, /do not duplicate live runner\/oracle\/librarian sessions/);
+  assert.match(prompt, /do not duplicate live runner\/scott\/oracle\/librarian sessions/);
+  assert.match(prompt, /Do not spawn oracle or librarian just to keep them warm/);
   assert.match(prompt, /Mission note only/);
   assert.match(prompt, /not authority to bypass dispatch/);
   assert.match(prompt, /Run git status/);

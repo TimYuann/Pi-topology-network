@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInitialStatusBoard, createMissionDraft, normalizeMissionCard, runWatchdogCheck, validateMissionCard, type MissionCard, type StatusBoard } from "../runtime/mission.ts";
+import { missionPathForWorkspace } from "../runtime/mission-path.ts";
 import { activePendingPackets, reconcileBoardWithLiveRegistry, reconcileBoardWithSessionRecords } from "../runtime/status-board.ts";
 import { buildRoleLaunchPlan, writeMissionLaunchScriptsSync, writeRoleLaunchScript } from "../runtime/spawn.ts";
 import { markMissionProgressForHqLaunch, markRoleLaunchRequested } from "../runtime/status-board.ts";
@@ -608,7 +609,7 @@ function ensureSessionLedger(cwd: string, mission: MissionCard, missionPath: str
 }
 
 function missionPathFor(cwd: string): string {
-  return process.env.PI_TOPOLOGY_MISSION_CARD ?? path.join(cwd, ".pi", "topology", "mission-card.json");
+  return missionPathForWorkspace(cwd);
 }
 
 function inspectTrust(cwd: string): string {

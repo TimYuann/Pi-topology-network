@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -917,6 +917,121 @@ test("topology_list stays compact even when verbose is requested", async () => {
   }
 });
 
+test("topology_init_mission ignores mission-card env from a different workspace", async () => {
+  const registered: Record<string, { execute: Function }> = {};
+  const pi = {
+    registerTool(tool: { name: string; execute: Function }) {
+      registered[tool.name] = tool;
+    },
+    registerCommand() {},
+    on() {},
+    registerFlag() {},
+    getFlag() {
+      return undefined;
+    },
+  };
+  registerPiTopology(pi);
+
+  const cwd = await mkdtemp(join(tmpdir(), "pi-topology-env-isolated-"));
+  const foreign = await mkdtemp(join(tmpdir(), "pi-topology-foreign-mission-"));
+  const foreignMissionPath = join(foreign, ".pi/topology/mission-card.json");
+  await mkdir(join(foreign, ".pi/topology"), { recursive: true });
+  await writeFile(foreignMissionPath, `${JSON.stringify({ sentinel: "do-not-overwrite" }, null, 2)}\n`, "utf8");
+  const previous = {
+    mission: process.env.PI_TOPOLOGY_MISSION_CARD,
+    workdir: process.env.PI_TOPOLOGY_WORKDIR,
+  };
+
+  try {
+    process.env.PI_TOPOLOGY_MISSION_CARD = foreignMissionPath;
+    process.env.PI_TOPOLOGY_WORKDIR = foreign;
+    await registered.topology_init_mission.execute(
+      "init",
+      { objective: "Do not overwrite another workspace mission", project: "env-isolated", allowed_paths: [cwd] },
+      undefined,
+      undefined,
+      { cwd },
+    );
+
+    const foreignMission = JSON.parse(await readFile(foreignMissionPath, "utf8"));
+    const localMission = JSON.parse(await readFile(join(cwd, ".pi/topology/mission-card.json"), "utf8"));
+    assert.equal(foreignMission.sentinel, "do-not-overwrite");
+    assert.equal(localMission.project, "env-isolated");
+  } finally {
+    restoreEnv("PI_TOPOLOGY_MISSION_CARD", previous.mission);
+    restoreEnv("PI_TOPOLOGY_WORKDIR", previous.workdir);
+  }
+});
+
+test("topology_list filters historical packets outside the active mission by default", async () => {
+  const registered: Record<string, { execute: Function }> = {};
+  const pi = {
+    registerTool(tool: { name: string; execute: Function }) {
+      registered[tool.name] = tool;
+    },
+    registerCommand() {},
+    on() {},
+    registerFlag() {},
+    getFlag() {
+      return undefined;
+    },
+  };
+  registerPiTopology(pi);
+
+  const cwd = await mkdtemp(join(tmpdir(), "pi-topology-list-mission-filter-"));
+  const ctx = { cwd };
+  const previousComsDir = process.env.PI_COMS_DIR;
+  try {
+    const comsDir = await mkdtemp(join("/private/tmp", "pi-topology-list-mission-filter-registry-"));
+    process.env.PI_COMS_DIR = comsDir;
+    await registered.topology_init_mission.execute(
+      "init",
+      { objective: "Filter stale inbox packets", project: "queue-filter", allowed_paths: [cwd] },
+      undefined,
+      undefined,
+      ctx,
+    );
+    const active = await registered.topology_send.execute(
+      "send-active",
+      { type: "REQUEST", from: "hq", to: "runner", body: { task: "current verify smoke" } },
+      undefined,
+      undefined,
+      ctx,
+    );
+    const stale = createPacket({
+      mission_id: "old-mission-001",
+      type: "REQUEST",
+      from: "hq",
+      to: "runner",
+      body: { task: "stale verify smoke" },
+    });
+    const packetDir = join(comsDir, "projects", "queue-filter", "packets");
+    await mkdir(packetDir, { recursive: true });
+    await appendFile(join(packetDir, "runner-inbox.jsonl"), `${JSON.stringify(stale)}\n`, "utf8");
+
+    const list = await registered.topology_list.execute(
+      "list",
+      { to: "runner" },
+      undefined,
+      undefined,
+      ctx,
+    );
+    const history = await registered.topology_list.execute(
+      "list-history",
+      { to: "runner", include_history: true },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    assert.match(list.content[0].text, new RegExp(active.details.packet.packet_id));
+    assert.doesNotMatch(list.content[0].text, new RegExp(stale.packet_id));
+    assert.match(history.content[0].text, new RegExp(stale.packet_id));
+  } finally {
+    restoreEnv("PI_COMS_DIR", previousComsDir);
+  }
+});
+
 test("topology_send can build a packet body from simple top-level fields", async () => {
   const registered: Record<string, { execute: Function }> = {};
   const pi = {
@@ -1063,6 +1178,71 @@ test("topology_read_artifact reads only mission topology artifacts", async () =>
   assert.equal(read.details.ok, true);
   assert.equal(blocked.details.ok, false);
   assert.match(blocked.content[0].text, /artifact_path must be under/);
+});
+
+test("topology_read_artifact returns a compact preview unless full is requested", async () => {
+  const registered: Record<string, { execute: Function }> = {};
+  const pi = {
+    registerTool(tool: { name: string; execute: Function }) {
+      registered[tool.name] = tool;
+    },
+    registerCommand() {},
+    on() {},
+    registerFlag() {},
+    getFlag() {
+      return undefined;
+    },
+  };
+  registerPiTopology(pi);
+
+  const cwd = await mkdtemp(join(tmpdir(), "pi-topology-read-artifact-compact-"));
+  const ctx = { cwd };
+  await registered.topology_init_mission.execute(
+    "init",
+    { objective: "Read compact reports", project: "dogfood", allowed_paths: [cwd] },
+    undefined,
+    undefined,
+    ctx,
+  );
+  const longBody = [
+    "verdict: pass",
+    ...Array.from({ length: 260 }, (_, index) => `evidence line ${index + 1}: ${"detail ".repeat(12)}`),
+    "TAIL_SENTINEL_DO_NOT_INLINE",
+  ].join("\n");
+  const written = await registered.topology_write_artifact.execute(
+    "artifact",
+    {
+      role: "scott",
+      kind: "report",
+      title: "Long research report",
+      body: longBody,
+    },
+    undefined,
+    undefined,
+    ctx,
+  );
+
+  const preview = await registered.topology_read_artifact.execute(
+    "preview",
+    { artifact_path: written.details.artifact_path },
+    undefined,
+    undefined,
+    ctx,
+  );
+  const full = await registered.topology_read_artifact.execute(
+    "full",
+    { artifact_path: written.details.artifact_path, full: true },
+    undefined,
+    undefined,
+    ctx,
+  );
+
+  assert.equal(preview.details.ok, true);
+  assert.equal(preview.details.truncated, true);
+  assert.match(preview.content[0].text, /topology_read_artifact/);
+  assert.match(preview.content[0].text, /verdict: pass/);
+  assert.doesNotMatch(preview.content[0].text, /TAIL_SENTINEL_DO_NOT_INLINE/);
+  assert.match(full.content[0].text, /TAIL_SENTINEL_DO_NOT_INLINE/);
 });
 
 test("tool_call guard persists incident and guard_block runtime event", async () => {

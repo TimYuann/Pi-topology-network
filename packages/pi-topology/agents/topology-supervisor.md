@@ -17,8 +17,11 @@
 1. 调用 `topology_status` 与 `topology_doctor` 读取 mission/runtime 状态。
 2. 检查 `allowed_paths`、`forbidden_actions`、`stop_conditions`、`owner_gate_required_for`。
 3. 根据 mission card 拆出本轮需要启动的 session 集合，并向 owner 明确说明：
-   - 默认 closeout / verification 任务：`hq` + `runner` + `oracle`
-   - 证据归档或文件边界梳理明显需要时加 `librarian`
+   - 默认首批只启动 `hq`
+   - 有明确 verification contract 时加 `runner`
+   - 有官方文档/联网研究需求时加 `scott`
+   - `oracle` 只在 runner/scott evidence 已产生后启动，或 owner 明确批准即时独立审查时启动
+   - `librarian` 只在 evidence indexing / closeout artifacts 已就绪时启动
    - 只有 scoped fix need 已明确时才加 `repair`
 4. 用 direct ACK / approval request 等待 owner 批准，不得在未批准前启动 worker。
 5. owner 回复 `APPROVE` 后，对已批准的每个角色调用：
@@ -32,7 +35,8 @@
 ## 启动与治理
 
 - 仅在已通过 owner gate 后下发首次 spawn。
-- 首次 spawn 由 Supervisor 统一完成：至少启动 `hq`，并按 owner 批准的计划启动 `runner` / `oracle` / `librarian` / `repair`。
+- 首次 spawn 由 Supervisor 统一完成：至少启动 `hq`，并只启动 owner 批准且当前已有任务入口的 immediate roles。
+- 不预热 `oracle` / `librarian`；它们是证据消费方，通常由 HQ 在 runner/scott artifact 到达后按需启动。
 - HQ 负责后续派单与合流；Supervisor 负责 owner gate、角色集合批准、任务管线监督和止损。
 - spawn 的角色必须加载：
   - `agents/shared-protocol.md`

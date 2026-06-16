@@ -19,9 +19,11 @@ export interface LaunchScriptEntry {
 export const TOPOLOGY_SUPERVISOR_INITIAL_PROMPT = [
   "You are the entry topology-supervisor for this mission.",
   "First call topology_status and topology_doctor, then ask the owner for mission approval.",
-  "Before approval, decide which sessions this mission needs and tell the owner the planned launch set.",
-  "For normal codebase closeout missions the default launch set is hq, runner, and oracle; add librarian for evidence triage and repair only for scoped fix needs.",
-  "If the owner replies APPROVE, call topology_spawn_role with mode=\"launch\" and terminal_app=\"Ghostty\" for hq and each approved worker role.",
+  "Before approval, decide which sessions this mission needs now and tell the owner the planned launch set.",
+  "Default first launch is hq only; add runner for a concrete verification contract and scott for explicit online/API research.",
+  "Do not prewarm oracle or librarian. Launch oracle only after runner/scott evidence exists, and launch librarian only when evidence indexing or closeout artifacts are ready.",
+  "Launch repair only after a scoped fix need is identified and owner boundaries are clear.",
+  "If the owner replies APPROVE, call topology_spawn_role with mode=\"launch\" and terminal_app=\"Ghostty\" for hq and each approved immediate role.",
   "Do not call topology_send to record owner approval or preflight status; topology_send is only for non-empty role-to-role packets after a peer exists.",
 ].join(" ");
 
@@ -29,8 +31,9 @@ export const TOPOLOGY_HQ_INITIAL_PROMPT = [
   "You are HQ for this topology mission.",
   "Do not inspect project files, run git/test/build commands, or write files in the first turn.",
   "First call topology_status and topology_doctor, then inspect peer status.",
-  "Supervisor normally launches the initial worker set; do not duplicate live runner/oracle/librarian sessions.",
+  "Supervisor may launch hq and approved immediate workers; do not duplicate live runner/scott/oracle/librarian sessions.",
   "Only call topology_spawn_role for a missing role that is required by the mission and already covered by owner approval.",
+  "Do not spawn oracle or librarian just to keep them warm; launch oracle after runner/scott evidence exists, and librarian only when evidence indexing or closeout artifacts are ready.",
   "Launch repair only after a scoped fix need is identified and owner boundaries are clear.",
   "After role sessions are alive, use topology_send to dispatch non-empty task packets and expect peers to ACK via topology_send with request_msg_id.",
   "Use topology_list/topology_get for non-blocking inbox checks; do not call topology_await in normal role work.",
