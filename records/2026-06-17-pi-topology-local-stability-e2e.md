@@ -55,6 +55,14 @@ Findings:
 - Ghostty smoke root with initial print failure: `/tmp/pi-topology-ghostty-e2e-20260617-014757`
 - Ghostty/read postfix root: `/tmp/pi-topology-ghostty-e2e-postfix-20260617-015100`
 - Restarted-read postfix root: `/tmp/pi-topology-read-e2e-20260617-015900`
+- Ghostty terminal-layer debug roots:
+  - `/tmp/pi-topology-ghostty-debug-20260617-020528`
+  - `/tmp/pi-topology-ghostty-postcleanup-20260617-021000`
+  - `/tmp/pi-topology-ghostty-direct-20260617-021031`
+  - `/tmp/pi-topology-ghostty-emptycfg-20260617-021131`
+  - `/tmp/pi-topology-ghostty-noempty-20260617-021347`
+  - `/tmp/pi-topology-ghostty-touch-20260617-021406`
+  - `/tmp/pi-topology-ghostty-open-noempty-20260617-021426`
 
 Important evidence files:
 
@@ -79,7 +87,7 @@ Important evidence files:
 | Supervisor print-mode smoke | Failed then fixed | initial `SPAWN_MODE=print` still launched; spawn-mode lock now records `mode=print`, `launch_requested=false` |
 | HQ launch request | Pass | `spawn_result mode=launch launch_requested=true` |
 | HQ role script | Pass | direct `hq.sh` execution wrote log, registry, and `alive_confirmed` |
-| Ghostty GUI execution via `open --args -e` | Risk | `open` returned 0 but did not execute the script in this environment |
+| Ghostty GUI execution via `open --args -e` | Blocked by terminal layer | minimal marker scripts and `/usr/bin/touch` did not execute; Ghostty processes were created but no command payload ran |
 | MiniMax lock | Pass | launch scripts and session ledger use `minimax-cn` / `MiniMax-M3` / `low`; no Anthropic/Claude strings found in relevant launch evidence |
 | Current mission packet filtering | Pass | default list filters by mission; include-history behavior covered by tests |
 | Repeated read de-noising in one process | Pass | unit regression |
@@ -111,6 +119,26 @@ Important evidence files:
    - Fix: shell-write detector ignores redirects to `/dev/null`, while preserving real write detection.
    - Test: `read-only shell commands may silence stderr to /dev/null`.
 
+## Additional Ghostty Launch Diagnostics
+
+The remaining launch gap was retested after the local fixes were committed.
+
+Findings:
+
+- `open -n -a Ghostty --args -e <marker.sh> <marker.txt>` created a Ghostty process with the expected argv, but `marker.txt` was not written.
+- Direct `/Applications/Ghostty.app/Contents/MacOS/ghostty -e <marker.sh> <marker.txt>` also did not write the marker.
+- `open -F -n -a Ghostty --args -e <marker.sh> <marker.txt>` did not change the outcome.
+- `open -n -a Ghostty --args -e /usr/bin/touch <marker.txt>` also did not write the marker, removing Pi, shell script, and argument parsing as likely causes.
+- `ghostty +validate-config` exited 0.
+- Ghostty's macOS Application Support config file is zero bytes:
+  `/Users/yuantian/Library/Application Support/com.mitchellh.ghostty/config.ghostty`
+- A reversible test moved that zero-byte config aside, launched the marker probe, and restored the file. The marker still did not run, so the empty config is not the sole root cause.
+- System logs around failed launches included Ghostty surface/configuration failures, including `embedded_window: error initializing surface err=error.OutOfMemory` on several launches and `Configuration Errors` windows.
+
+Conclusion:
+
+The generated Pi role script and launch args are not the failing boundary. The failure reproduces with `/usr/bin/touch`, so it is a local Ghostty/macOS terminal execution issue in this environment. No package launcher change was made from this evidence because the tested alternatives (`open -F`, direct binary launch, AppleScript `new window with configuration`, document open, explicit config file, temporary config home, and reversible removal of the zero-byte config) did not prove a working Ghostty command execution path.
+
 ## Commands Run
 
 Representative commands:
@@ -130,6 +158,7 @@ Representative commands:
 ## Remaining Risks
 
 - Ghostty GUI launch on this machine is not fully proven. `topology_spawn_role(mode=launch)` records launch requested, and the generated `hq.sh` works when executed directly, but `open -n -a Ghostty --args -e <script>` did not execute the script during this run. Treat this as the highest-priority remaining local terminal-invocation issue before relying on unattended Ghostty spawning.
+- The local Ghostty issue reproduces without Pi using `/usr/bin/touch`, and system logs point at Ghostty surface/configuration failures. Next fix should start outside `packages/pi-topology`: get a minimal `open -n -a Ghostty --args -e /usr/bin/touch /tmp/probe` working on this Mac, then rerun the package HQ launch lane.
 - Non-interactive slash command stdout is sparse for `/topology status` and `/topology doctor`; file/event evidence is reliable, but operator-facing CLI output could be improved.
 - A direct HQ run spawned runner and later marked HQ stale after the session was interrupted. The stale/resume behavior is explainable and evidence-backed, but longer multi-role closeout still needs a complete owner-approved mission run.
 - Single mission-card flow remains workable for these fresh roots, but repeated dogfood in one workspace can still be ambiguous.
