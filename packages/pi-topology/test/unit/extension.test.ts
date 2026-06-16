@@ -84,6 +84,18 @@ test("registers package skill path via Pi resources_discover", async () => {
   );
 });
 
+test("topology-runtime skill frontmatter follows Pi skill loading requirements", async () => {
+  const skill = await readFile(new URL("../../skills/topology-runtime/SKILL.md", import.meta.url), "utf8");
+  const match = /^---\n([\s\S]*?)\n---/.exec(skill);
+  assert.notEqual(match, null);
+  const frontmatter = match?.[1] ?? "";
+
+  assert.match(frontmatter, /^name: topology-runtime$/m);
+  assert.match(frontmatter, /^description: ".+"$/m);
+  assert.doesNotMatch(frontmatter, /^origin:/m);
+  assert.match(frontmatter, /^metadata:$/m);
+});
+
 test("session_start does not install topology ui for ordinary Pi sessions", () => {
   const handlers: Record<string, (...args: unknown[]) => unknown> = {};
   const statusWrites: Array<[string, string | undefined]> = [];

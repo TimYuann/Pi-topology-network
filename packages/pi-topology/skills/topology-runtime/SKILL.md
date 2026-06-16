@@ -1,7 +1,8 @@
 ---
 name: topology-runtime
-description: "Operate the OMP拓扑网络 Pi topology runtime tools and status workflow."
-origin: pi-topology package
+description: "Operate or debug the OMP拓扑网络 Pi topology runtime: /topology startup, topology_* tools, Supervisor/HQ/worker mesh, packets, status, doctor, and live peer workflow."
+metadata:
+  origin: pi-topology package
 ---
 
 # Topology Runtime
