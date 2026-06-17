@@ -36,7 +36,7 @@ export function registerTopologyCommands(pi: PiLike, hooks: TopologyCommandHooks
   pi.registerCommand("topology-status", {
     description: "Show the current Pi topology preflight/status summary.",
     handler: (_args: string, ctx: CommandContext) => {
-      const result = renderPreflight(ctx.cwd, { detailed: true, supervisorActive: hooks.isSupervisorActive?.() });
+      const result = renderStatus(ctx.cwd, { supervisorActive: hooks.isSupervisorActive?.() });
       ctx.ui?.notify?.(`Topology status checked for ${ctx.cwd}`, "info");
       emitCommandText(pi, result, { command: "topology-status", cwd: ctx.cwd });
       return result;
@@ -85,7 +85,7 @@ async function handleTopologyCommand(args: string, ctx: CommandContext, hooks: T
     case "help":
       return renderHelp();
     case "status":
-      return renderPreflight(ctx.cwd, { detailed: true, supervisorActive: hooks.isSupervisorActive?.() });
+      return renderStatus(ctx.cwd, { supervisorActive: hooks.isSupervisorActive?.() });
     case "doctor":
       return renderDoctor(ctx.cwd);
     case "packets":
@@ -156,6 +156,14 @@ function renderMigrationPrompt(cwd: string): string {
   lines.push("");
   lines.push("Run `/topology migrate` to apply. Use `/topology migrate plan` to show this plan again. The migration is idempotent and non-destructive (legacy root files are kept as readable fallbacks).");
   return lines.join("\n");
+}
+
+function renderStatus(cwd: string, options: { supervisorActive?: boolean } = {}): string {
+  const dashboard = readDashboardSnapshot(cwd);
+  if (dashboard.has_active_mission) {
+    return formatDashboardTextDetailed(dashboard);
+  }
+  return renderPreflight(cwd, { detailed: true, supervisorActive: options.supervisorActive });
 }
 
 function renderPreflight(cwd: string, options: { detailed?: boolean; supervisorActive?: boolean } = {}): string {

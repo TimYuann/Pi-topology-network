@@ -606,6 +606,16 @@ test("topology migrate applies legacy migration while migrate plan stays read-on
   assert.equal(pointer.mission_id, mission.mission_id);
   const perMissionCard = JSON.parse(await readFile(join(cwd, ".pi/topology/missions", mission.mission_id, "mission-card.json"), "utf8"));
   assert.equal(perMissionCard.mission_id, mission.mission_id);
+
+  const status = await commands.topology.handler("status", { cwd });
+  assert.doesNotMatch(status, /Topology preflight/);
+  assert.match(status, new RegExp(`mission: ${mission.mission_id}`));
+  assert.match(status, /pending_packets: 0 \(active_total=0, stale=0\)/);
+  assert.match(status, /mission_dir:/);
+
+  const statusAlias = await commands["topology-status"].handler("", { cwd });
+  assert.doesNotMatch(statusAlias, /Topology preflight/);
+  assert.match(statusAlias, /mission_dir:/);
 });
 
 test("topology status refreshes existing launch scripts without duplicating session ledger", async () => {
