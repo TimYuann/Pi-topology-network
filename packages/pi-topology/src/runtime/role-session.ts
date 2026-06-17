@@ -342,17 +342,25 @@ export function classifyRole(
     };
   }
 
-  // Step 4e: launch-attempt event → resumable with liveness check.
+  // Step 4e: launch-attempt event within resume window → resumable with
+  // liveness check. Per spec §4.2: "A session record may be `resumable` for
+  // up to the Mission resume freshness window" — this applies to all
+  // resumable classifications, including launch-attempt events. Outside
+  // the window, falls through to step 5 (stale).
   if (LAUNCH_ATTEMPT_EVENTS.has(latest.event_type)) {
-    return {
-      role,
-      state: "resumable",
-      latest_record_id: latest.record_id,
-      latest_event_type: latest.event_type,
-      latest_event_timestamp: latest.timestamp,
-      needs_liveness_confirmation: true,
-      reason: "launch attempted but liveness not confirmed (spec §6.3 step 5)",
-    };
+    const age = options.now.getTime() - Date.parse(latest.timestamp);
+    if (Number.isFinite(age) && age >= 0 && age <= resumeMs) {
+      return {
+        role,
+        state: "resumable",
+        latest_record_id: latest.record_id,
+        latest_event_type: latest.event_type,
+        latest_event_timestamp: latest.timestamp,
+        needs_liveness_confirmation: true,
+        reason: "launch attempted within resume window, liveness check needed (spec §6.3 step 5)",
+      };
+    }
+    // Outside the resume window: fall through to step 5 (stale).
   }
 
   // Step 5: stale fallback (record exists but no qualifying state).

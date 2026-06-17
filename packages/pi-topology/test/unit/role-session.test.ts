@@ -333,6 +333,71 @@ test("classifyRole step 5: launch_printed and launch_requested also trigger live
   }
 });
 
+// Slice 3.1: launch-attempt events must respect the resume freshness window.
+// Spec §4.2: "A session record may be `resumable` for up to the Mission
+// resume freshness window." This applies to all resumable classifications,
+// including those derived from script_written / launch_printed / launch_requested.
+// Outside the window, the role is `stale` (liveness is too uncertain to claim
+// "resumable" without a fresh heartbeat or alive_confirmed).
+
+test("classifyRole step 5: old script_written (11 min) is stale, not resumable (slice 3.1)", () => {
+  const now = new Date("2026-06-17T00:11:00.000Z");
+  const records = [
+    record({
+      mission_id: "m",
+      role: "hq",
+      event_type: "script_written",
+      script_path: "/work/project/launch/hq.sh",
+      timestamp: "2026-06-17T00:00:00.000Z",
+    }),
+  ];
+  const c = classifyRole("hq", records, { now });
+  assert.equal(c.state, "stale");
+  assert.equal(c.needs_liveness_confirmation, false);
+  assert.match(c.reason, /older than freshness/);
+});
+
+test("classifyRole step 5: old launch_printed (11 min) is stale, not resumable (slice 3.1)", () => {
+  const now = new Date("2026-06-17T00:11:00.000Z");
+  const records = [
+    record({ mission_id: "m", role: "hq", event_type: "launch_printed", timestamp: "2026-06-17T00:00:00.000Z" }),
+  ];
+  const c = classifyRole("hq", records, { now });
+  assert.equal(c.state, "stale");
+  assert.equal(c.needs_liveness_confirmation, false);
+});
+
+test("classifyRole step 5: old launch_requested (11 min) is stale, not resumable (slice 3.1)", () => {
+  const now = new Date("2026-06-17T00:11:00.000Z");
+  const records = [
+    record({ mission_id: "m", role: "hq", event_type: "launch_requested", timestamp: "2026-06-17T00:00:00.000Z" }),
+  ];
+  const c = classifyRole("hq", records, { now });
+  assert.equal(c.state, "stale");
+  assert.equal(c.needs_liveness_confirmation, false);
+});
+
+test("classifyRole step 5: script_written at exact resume-window boundary is still resumable", () => {
+  const now = new Date("2026-06-17T00:10:00.000Z");
+  const records = [
+    record({ mission_id: "m", role: "hq", event_type: "script_written", timestamp: "2026-06-17T00:00:00.000Z" }),
+  ];
+  const c = classifyRole("hq", records, { now });
+  // 10 min = 600_000 ms is the inclusive boundary.
+  assert.equal(c.state, "resumable");
+  assert.equal(c.needs_liveness_confirmation, true);
+});
+
+test("classifyRole step 5: alive_confirmed and script_written share the same resume-window rule (10min)", () => {
+  const now = new Date("2026-06-17T00:15:00.000Z");
+  const aliveOld = record({ mission_id: "m", role: "hq", event_type: "alive_confirmed", timestamp: "2026-06-17T00:00:00.000Z" });
+  const scriptOld = record({ mission_id: "m", role: "repair", event_type: "script_written", timestamp: "2026-06-17T00:00:00.000Z" });
+  const aliveC = classifyRole("hq", [aliveOld], { now });
+  const scriptC = classifyRole("repair", [scriptOld], { now });
+  assert.equal(aliveC.state, "stale");
+  assert.equal(scriptC.state, "stale");
+});
+
 test("classifyRole step 6: no records → stale", () => {
   const now = new Date("2026-06-17T00:00:00.000Z");
   const c = classifyRole("hq", [], { now });
