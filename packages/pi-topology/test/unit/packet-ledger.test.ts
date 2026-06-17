@@ -593,6 +593,40 @@ test("populatePendingPacketCountForMission: actionableTypesForRole override is h
   }
 });
 
+test("populatePendingPacketCountForMission: wrong-mission entries do NOT inflate count (slice 4.2)", () => {
+  const ws = makeWorkspace();
+  try {
+    const { card, layout } = makeMission(ws, "dogfood", "wrong-mission");
+    const now = new Date("2026-06-17T00:00:00.000Z");
+    // One valid entry in this Mission's ledger.
+    appendPacketLedger(ws, layout, entry({
+      mission_id: card.mission_id,
+      packet_id: "pkt_valid",
+      to: "topology-supervisor",
+      type: "REPORT",
+      last_seen_at: now.toISOString(),
+    }));
+    // Stray entry with a DIFFERENT mission_id (e.g., compactor bug or
+    // manual edit). Per spec §7 line 531, the per-Mission pending count
+    // must not include this — it would be visible to a different Mission's
+    // active reads, not this one's.
+    const wrongMissionId = `${card.mission_id}-other`;
+    appendPacketLedger(ws, layout, entry({
+      mission_id: wrongMissionId,
+      packet_id: "pkt_wrong_mission",
+      to: "topology-supervisor",
+      type: "REPORT",
+      last_seen_at: now.toISOString(),
+    }));
+    const result = populatePendingPacketCountForMission(ws, card.mission_id, now);
+    // Only the valid entry is counted; the wrong-mission entry is filtered
+    // out by the mission_id guard added in slice 4.2.
+    assert.equal(result?.pending_packet_count, 1);
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
 test("getAllActivePacketsForMission: counts across all roles", () => {
   const ws = makeWorkspace();
   try {

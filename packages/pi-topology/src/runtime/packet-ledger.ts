@@ -369,6 +369,12 @@ export function populatePendingPacketCountForMission(
   let activeCount = 0;
   let staleCount = 0;
   for (const e of all) {
+    // Slice 4.2: defensive mission_id filter. The per-mission ledger file is
+    // path-scoped to this Mission, but a stray entry with a different
+    // mission_id (e.g., from a compactor bug, manual edit, or future schema
+    // migration) must not inflate pending_packet_count. Mirrors the same
+    // check in getActivePacketsForMission / getAllActivePacketsForMission.
+    if (e.mission_id !== missionId) continue;
     const liveness = classifyPacketLiveness(e, now, staleThresholdMs);
     if (liveness === "stale") {
       staleCount += 1;
