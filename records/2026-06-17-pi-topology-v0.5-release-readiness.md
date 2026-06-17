@@ -316,7 +316,8 @@ Both the release readiness doc (`records/2026-06-17-pi-topology-v0.5-release-rea
 ## 7. Next Steps
 
 1. Codex Reviewer 复审
-2. 如放行：进入 release readiness 后续步骤（CHANGELOG / release notes / npm publish per spec §9.1）
+2. 2026-06-18 pre-publish prep 已完成：version bump + CHANGELOG + RELEASE-NOTES
+3. push / publish 显式延后；owner 先本地生产测试约一周
 
 ## 8. Quick Reference
 
@@ -325,7 +326,7 @@ Both the release readiness doc (`records/2026-06-17-pi-topology-v0.5-release-rea
 | PRD | `docs/13-pi-topology-mission-runtime-prd.md` |
 | Spec | `docs/14-pi-topology-mission-runtime-spec.md` |
 | v0.6 parking lot（**不实现**） | `docs/15-pi-topology-mission-runtime-v0.6-hardening-notes.md` |
-| Latest commit | `9b46e89 fix(v0.5-readiness): correct stale HEAD refs, pending-commit language, and number inconsistencies` |
+| readiness evidence commit | `9b46e89 fix(v0.5-readiness): correct stale HEAD refs, pending-commit language, and number inconsistencies` |
 | Handoff docs | `records/2026-06-17-pi-topology-*.md` |
 | Dogfood evidence | `records/2026-06-17-pi-topology-dogfood-run-smoke.md` |
 | Package | `packages/pi-topology/package.json` |

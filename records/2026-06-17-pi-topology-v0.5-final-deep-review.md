@@ -5,13 +5,13 @@
 版本：v0.5
 状态：✅ Ready for Codex Reviewer final approval before publish
 readiness evidence commit：`9b46e89 fix(v0.5-readiness): correct stale HEAD refs, pending-commit language, and number inconsistencies`
-range：slice 1-7 + 5 hotfix patches + release readiness + readiness fix = 32 commits since slice 2 doc (`251ebe8`)
+range：slice 1-7 + 11 hotfix patches + release readiness + readiness fix = 32 commits since slice 2 doc (`251ebe8`)
 范围：`docs/13` PRD v0.5 + `docs/14` Spec v0.5
 **不实现**：`docs/15` v0.6 hardening notes（forward-looking parking lot；不是本版 PRD/Spec，不是 release blocker）
 
 ## Verdict
 
-**Approve.** v0.5 runtime implementation matches the spec contract; the 7-slice roadmap plus 5 hotfix patches (1.1, 1.2, 5.1, 6.1, 7.1, 7.2) close all P0/P1/P2 reviewer findings raised during the roadmap; smoke + dogfood + 297 unit tests + 1 integration test are green; 0 stale state on disk. No release blockers found in the runtime contract.
+**Approve.** v0.5 runtime implementation matches the spec contract; the 7-slice roadmap plus 11 hotfix patches close all P0/P1/P2 reviewer findings raised during the roadmap; smoke + dogfood + 297 unit tests + 1 integration test are green; 0 stale state on disk. No release blockers found in the runtime contract.
 
 The remaining publish-time decisions (CHANGELOG / release notes / npm version bump from 0.1.0 to 0.5.0 / owner approval gate) are pre-flight artifacts that need owner sign-off but do not require code changes.
 
@@ -59,7 +59,7 @@ Audit cross-references `docs/14` Spec v0.5 against:
 | **§12.1 Migration 7-step** | detect / read / create / copy / registry / pointer / event | `migration.ts` `migrateLegacyToPerMission` does all 7; slice 6.1 fixed inferred-empty + unsafe-mission-id gaps | ✅ Implemented |
 | **§12.1 Inferred-empty tracking** | Missing files get `_meta.inferred_empty: true` (JSON) or `migration_inferred_empty` row (JSONL) | `writeInferredEmptyJson` + `writeInferredEmptyJsonl`; slice 6.1 extended to status-board.json | ✅ Implemented |
 | **§12.2 Mirror updates** | 5-file mirror list, sync on every write | `root-mirror.ts` `appendToJsonlLedger` + `copyRootMirrorFile` + `syncRootMirrorFromLayout` | ✅ Implemented (slice 1) |
-| **§13 Slice roadmap** | 7 slices in order | All 7 main + 5 hotfix patches committed; roadmap complete | ✅ Implemented |
+| **§13 Slice roadmap** | 7 slices in order | All 7 main + 11 hotfix patches committed; roadmap complete | ✅ Implemented |
 | **§14 Test requirements** | create registry / migrate legacy / active pointer switch / dashboard counts / stale freshness / launch permission mismatch / cleanup preserves raw / direct script lane / smoke | `mission-registry.test.ts` (23) / `migration.test.ts` (23) / `mission-actions.test.ts` (18) / `dashboard.test.ts` (27) / `role-session.test.ts` (39) / `launch-metadata.test.ts` (14) / `packet-ledger.test.ts` (47) / `dogfood.test.ts` (1) / `smoke` | ✅ Implemented |
 | **§15 API audit items** | 8 follow-ups, none blocking | `records/2026-06-17-pi-topology-mission-runtime-api-audit.md` covers all 8 with `supported` / `local_protocol` / `compatibility_target` labels | ✅ Implemented |
 
@@ -165,11 +165,11 @@ This is a doc-only fix; runtime / tests / dogfood are unaffected.
 | Field | Value | Notes |
 |---|---|---|
 | `name` | `pi-topology-network` | ✅ |
-| `version` | `0.1.0` | ⚠️ **Pre-publish consideration**: spec contract is v0.5 but package version is 0.1.0. Per the user's spec contract, this release is v0.5.0 semver. Should be bumped to `0.5.0` (or `0.6.0` if treating the post-roadmap state as next minor). **Owner decision required** — not a code blocker. |
+| `version` | `0.5.0` | ✅ post-review owner decision completed on 2026-06-18 |
 | `type` | `module` | ✅ |
 | `description` | "Pi package for OMP topology network session mesh governance" | ✅ |
 | `license` | MIT | ✅ |
-| `files` whitelist | `index.ts, src/**/*.ts, agents/, scripts/, skills/**/SKILL.md, docs/, README.md, package.json` | ✅ (slice 1-7 outputs land in these) |
+| `files` whitelist | `index.ts, src/**/*.ts, agents/, scripts/, skills/**/SKILL.md, docs/, CHANGELOG.md, RELEASE-NOTES.md, README.md, package.json` | ✅ (slice 1-7 outputs + release docs land in these) |
 | `peerDependencies` | `@earendil-works/pi-coding-agent: *` (optional) | ✅ |
 | `pi.extensions` | `["./index.ts"]` | ✅ |
 | `pi.skills` | `["./skills"]` | ✅ |
@@ -181,15 +181,15 @@ This is a doc-only fix; runtime / tests / dogfood are unaffected.
 
 ```
 npm notice name: pi-topology-network
-npm notice version: 0.1.0
-npm notice filename: pi-topology-network-0.1.0.tgz
-npm notice package size: 112.3 kB
-npm notice unpacked size: 439.7 kB
-npm notice total files: 62
+npm notice version: 0.5.0
+npm notice filename: pi-topology-network-0.5.0.tgz
+npm notice package size: 114.0 kB
+npm notice unpacked size: 443.3 kB
+npm notice total files: 64
 ```
 
 Top-level files in tarball:
-- `package.json`, `README.md`, `index.ts`
+- `package.json`, `README.md`, `CHANGELOG.md`, `RELEASE-NOTES.md`, `index.ts`
 - `agents/` (7 .md files: shared-protocol, topology-supervisor, hq, repair, runner, oracle, librarian, scott)
 - `docs/` (4 files: architecture, dogfood, install, package-hub-readiness)
 - `scripts/` (3 files: ghostty-role-smoke.sh, ghostty-supervisor-smoke.sh, guard-smoke.mjs)
@@ -203,18 +203,11 @@ All v0.5 spec contract code paths are in the tarball.
 
 ### 4.3 CHANGELOG / Release notes
 
-- ❌ **No CHANGELOG.md exists** in repo
-- ❌ **No RELEASE-NOTES.md exists** in repo
-- **Recommendation**: Create `CHANGELOG.md` (or `RELEASE-NOTES.md`) before publish. Per OMP practice (project conventions), release notes should include:
-  - Version: v0.5.0 (post-roadmap)
-  - Spec contract: `docs/14` v0.5
-  - 7 slices + 5 hotfix patches
-  - 297 unit + 1 integration tests
-  - Direct generated-script launch support
-  - Migration from legacy single-Mission layout
-  - Known limitations deferred to v0.6 (per `docs/15`)
+- ✅ `packages/pi-topology/CHANGELOG.md` exists
+- ✅ `packages/pi-topology/RELEASE-NOTES.md` exists
+- ✅ both files are included in the npm `files` whitelist and appear in `npm pack --dry-run`
 
-**This is a publish pre-flight, not a runtime blocker.** Owner can decide whether to require it for v0.5 publish.
+These were completed on 2026-06-18 as local pre-publish prep. Push / publish remain explicitly deferred by owner decision.
 
 ### 4.4 Uncommitted files
 
@@ -233,8 +226,8 @@ All v0.5 spec contract code paths are in the tarball.
 | Severity | Item | Status |
 |---|---|---|
 | Blocker | None found in runtime contract | — |
-| Pre-publish consideration | `package.json` version `0.1.0` vs spec contract v0.5 | Owner decision (semver bump) |
-| Pre-publish consideration | No `CHANGELOG.md` / `RELEASE-NOTES.md` | Owner decision (recommended) |
+| Pre-publish consideration | `package.json` version aligned to `0.5.0` | Completed post-review |
+| Pre-publish consideration | `CHANGELOG.md` / `RELEASE-NOTES.md` | Completed post-review |
 | Pre-publish consideration | Owner approval gate before `npm publish` | Required per project convention |
 | v0.6 backlog (not v0.5) | Incident states §4.6 | Deferred to v0.6 per `docs/15` |
 | v0.6 backlog (not v0.5) | Closeout.md writer helper | Deferred to v0.6 |
@@ -245,13 +238,13 @@ No release blockers in the runtime contract.
 
 **v0.5 ready for Codex Reviewer final approval before publish.**
 
-Runtime contract is fully implemented per `docs/13` PRD v0.5 + `docs/14` Spec v0.5. The 7-slice roadmap plus 5 hotfix patches close all reviewer findings raised during the implementation rounds. All validation gates pass:
+Runtime contract is fully implemented per `docs/13` PRD v0.5 + `docs/14` Spec v0.5. The 7-slice roadmap plus 11 hotfix patches close all reviewer findings raised during the implementation rounds. All validation gates pass:
 - 297/297 unit tests
 - 1/1 integration (dogfood) test
 - `npm run smoke` clean
 - 0 stale state on disk
 
-The remaining items (CHANGELOG, version bump, publish approval) are pre-flight artifacts that require owner sign-off but do not require code changes. The deep review doc is committed at the readiness evidence commit (`9b46e89`); no further runtime changes are needed for v0.5 release.
+The remaining publish action requires owner sign-off. Version bump and release notes were completed as local pre-publish prep on 2026-06-18; push / publish remain deferred. The deep review doc is committed at the readiness evidence commit (`9b46e89`); no further runtime changes are needed for v0.5 release.
 
 ## 7. Commits Reference (readiness evidence)
 
@@ -268,7 +261,7 @@ b88ebe1 slice(3): add session registry semantics and role liveness classificatio
 5c8584f slice(1): add mission registry layout
 ```
 
-Plus 5 hotfix patches: `aaa884f` (6.1), `856b1c4` (5.1), `8a2d218` (4.2), `0e52daa` (4.1), `36a4f11` (3.1), `11fb51d` (2.2), `230b464` (2.1), `d752a85` (1.2), `055e821` (1.1), `2bdf3c3` (7.1), `56abd2f` (7.2). Wait, that's 11 hotfixes — let me recount:
+Plus 11 hotfix patches: `aaa884f` (6.1), `856b1c4` (5.1), `8a2d218` (4.2), `0e52daa` (4.1), `36a4f11` (3.1), `11fb51d` (2.2), `230b464` (2.1), `d752a85` (1.2), `055e821` (1.1), `2bdf3c3` (7.1), `56abd2f` (7.2):
 
 - 1.1 `055e821` — 3 reviewer findings
 - 1.2 `d752a85` — active_mission_id empty-missions
@@ -282,7 +275,7 @@ Plus 5 hotfix patches: `aaa884f` (6.1), `856b1c4` (5.1), `8a2d218` (4.2), `0e52d
 - 7.1 `2bdf3c3` — pi-stub cleanup + tightened assertions
 - 7.2 `56abd2f` — close remaining pi-stub-* leak
 
-That's **11 hotfixes** (not 5). The previous handoff doc said "5 hotfix patches" but the actual count is 11. This is a **count inconsistency** to flag in the release doc.
+That's **11 hotfixes**. The release readiness doc uses the same 7 main + 11 hotfix = 18 feature commit count.
 
 | # | Slice | Hotfix | Commit |
 |---|---|---|---|
@@ -305,9 +298,9 @@ That's **11 hotfixes** (not 5). The previous handoff doc said "5 hotfix patches"
 
 | Decision | Required by v0.5 release? | Owner sign-off |
 |---|---|---|
-| Bump `package.json` version to `0.5.0` | Recommended for spec contract alignment | Yes |
-| Create `CHANGELOG.md` / `RELEASE-NOTES.md` | Recommended per OMP practice | Yes |
-| Run `npm publish` | Required for actual publish | Yes (explicit) |
+| Bump `package.json` version to `0.5.0` | Completed on 2026-06-18 | Approved |
+| Create `CHANGELOG.md` / `RELEASE-NOTES.md` | Completed on 2026-06-18 | Approved |
+| Run `npm publish` | Required for actual publish | Deferred; explicit approval still required |
 | Update release readiness doc to use "readiness evidence commit" terminology | Doc-only improvement; not blocking | Optional |
 | Implement any `docs/15` v0.6 items | **NOT v0.5 scope; explicitly excluded** | N/A |
 
@@ -322,4 +315,4 @@ v0.5 落地干净：
 - Typecheck + pack 干净
 - 闸纪律全程守
 
-请 Codex Reviewer 复审放行 v0.5 release。放行后下一步由 owner 决定（version bump / CHANGELOG / publish）。
+请 Codex Reviewer 复审放行 v0.5 release。version bump / CHANGELOG / release notes 已在 2026-06-18 完成；push / publish 等 owner 本地生产测试后再决定。
