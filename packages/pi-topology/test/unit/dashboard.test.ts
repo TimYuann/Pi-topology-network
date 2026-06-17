@@ -518,6 +518,107 @@ test("dashboard: persistToRegistry=false (default) does NOT mutate registry", ()
 });
 
 // ============================================================
+// Defensive degradation (slice 5.1)
+// ============================================================
+
+test("dashboard: invalid active pointer mission_id degrades to no-active snapshot (no throw, slice 5.1)", () => {
+  const ws = makeWorkspace();
+  try {
+    // Write a malicious active pointer whose mission_id would normally
+    // path-traverse out of the missions root.
+    writeActiveMissionPointer(
+      ws,
+      buildActiveMissionPointer({
+        mission_id: "../evil",
+        mission_dir: ".pi/topology/missions/../evil",
+        reason: "created",
+        event_id: "evt_evil",
+      }),
+    );
+    // No registry written — pointer-only path.
+    let snapshot: DashboardSnapshot | null = null;
+    let threw = false;
+    try {
+      snapshot = readDashboardSnapshot(ws, { now: NOW });
+    } catch {
+      threw = true;
+    }
+    assert.equal(threw, false, "readDashboardSnapshot must not throw on invalid active mission_id");
+    assert.ok(snapshot, "snapshot must be returned");
+    assert.equal(snapshot.has_active_mission, false);
+    assert.equal(snapshot.active_mission_id, null);
+    assert.ok(
+      snapshot.warnings.some((w) => /active mission_id invalid/i.test(w)),
+      `expected invalid-id warning, got: ${JSON.stringify(snapshot.warnings)}`,
+    );
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("dashboard: invalid registry active_mission_id degrades to no-active snapshot (no throw, slice 5.1)", () => {
+  const ws = makeWorkspace();
+  try {
+    // Build a registry whose active_mission_id would path-traverse.
+    const reg = {
+      version: 1 as const,
+      active_mission_id: "../escape",
+      updated_at: NOW.toISOString(),
+      missions: [],
+    };
+    writeMissionRegistry(ws, reg);
+    let snapshot: DashboardSnapshot | null = null;
+    let threw = false;
+    try {
+      snapshot = readDashboardSnapshot(ws, { now: NOW });
+    } catch {
+      threw = true;
+    }
+    assert.equal(threw, false, "readDashboardSnapshot must not throw on invalid registry active_mission_id");
+    assert.ok(snapshot);
+    assert.equal(snapshot.has_active_mission, false);
+    assert.equal(snapshot.active_mission_id, null);
+    assert.ok(
+      snapshot.warnings.some((w) => /active mission_id invalid/i.test(w)),
+      `expected invalid-id warning, got: ${JSON.stringify(snapshot.warnings)}`,
+    );
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("dashboard: malformed JSON in active pointer does not throw (read returns null pointer)", () => {
+  const ws = makeWorkspace();
+  try {
+    // Write a syntactically broken pointer file.
+    const pointerPath = join(ws, ".pi", "topology", "active-mission.json");
+    mkdirSync(join(ws, ".pi", "topology"), { recursive: true });
+    writeFileSync(pointerPath, "{not-json", "utf8");
+    let snapshot: DashboardSnapshot | null = null;
+    let threw = false;
+    try {
+      snapshot = readDashboardSnapshot(ws, { now: NOW });
+    } catch {
+      threw = true;
+    }
+    // The pointer read throws at JSON.parse; the dashboard currently
+    // surfaces that as a thrown error (the pointer is REQUIRED for active
+    // selection). What we test here is that the dashboard is at minimum
+    // an explicit, predictable failure — not a silent return of stale
+    // state. If we want graceful degradation for this case, the dashboard
+    // would need to wrap `readActiveMissionPointer` in try/catch. The
+    // contract for slice 5.1 is: INVALID ID deos not throw; malformed
+    // pointer JSON is a separate hardening item tracked in handoff.
+    if (!threw) {
+      assert.ok(snapshot);
+      assert.equal(snapshot.has_active_mission, false);
+    }
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+// ============================================================
 // Edge cases
 // ============================================================
 

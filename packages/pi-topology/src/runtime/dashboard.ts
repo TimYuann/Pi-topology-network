@@ -353,11 +353,45 @@ export function readDashboardSnapshot(
     };
   }
 
-  // Validate mission_id against path-traversal.
+  // Validate mission_id against path-traversal. If the active Mission id is
+  // invalid (e.g. `../evil` from a poisoned active pointer or registry
+  // entry), `missionLayoutPaths` would re-validate and throw, which would
+  // turn the dashboard into a hard error. Degrade gracefully instead:
+  // surface an `invalid active mission_id` warning AND return the
+  // no-active-mission snapshot so the caller can recover (operator can
+  // inspect the warning and reset the active pointer or registry).
   try {
     validateMissionIdPathSegment(activeMissionId);
   } catch (err) {
-    warnings.push(`active mission_id invalid: ${(err as Error).message}`);
+    warnings.push(
+      `active mission_id invalid (${(err as Error).message}); falling back to no-active-mission snapshot`,
+    );
+    return {
+      workspaceDir,
+      generated_at: now.toISOString(),
+      has_active_mission: false,
+      has_registry,
+      active_mission_id: null,
+      title: null,
+      mission_dir: null,
+      lifecycle_state: null,
+      owner_gate: null,
+      blocked: false,
+      archived: false,
+      next_action: null,
+      available_actions: [],
+      picker_mode: "registry",
+      role_summary: { live: 0, resumable: 0, stale: 0, parked: 0, closed: 0 },
+      role_classifications: [],
+      pending_packet_count: 0,
+      pending_packet_total: 0,
+      stale_packet_count: 0,
+      incident_count: 0,
+      closeout_path: null,
+      artifacts: [],
+      paths: buildPathsForActive(workspaceDir, null, activePointer),
+      warnings,
+    };
   }
 
   const entry = registry ? findMissionInRegistry(registry, activeMissionId) : null;
