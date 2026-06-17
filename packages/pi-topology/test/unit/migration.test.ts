@@ -510,3 +510,118 @@ test("migration: formatMigrationResult includes ok, mode, mission_id, files_migr
     rmSync(ws, { recursive: true, force: true });
   }
 });
+
+// ============================================================
+// Slice 6.1: status-board inferred-empty + invalid mission_id
+// ============================================================
+
+test("migration: missing legacy status-board.json marks per-Mission status-board as inferred_empty (slice 6.1)", () => {
+  const ws = makeWorkspace();
+  try {
+    makeLegacyWorkspace(ws, {
+      mission_id: "missing-board-2026-06-17-001",
+      project: "missing-board",
+      objective: "Missing status board",
+      has_status_board: false, // <-- missing
+      has_sessions: true,
+      has_runtime_events: true,
+      has_incident_log: true,
+    });
+    const result = migrateLegacyToPerMission(ws, { now: NOW });
+    assert.equal(result.ok, true);
+    assert.equal(result.files_created_empty.includes("status-board.json"), true);
+
+    const layout = missionLayoutPaths(ws, "missing-board-2026-06-17-001");
+    const statusBoardRaw = readFileSync(layout.statusBoardPath, "utf8");
+    const parsed = JSON.parse(statusBoardRaw) as { _meta?: { inferred_empty?: boolean } };
+    assert.equal(parsed._meta?.inferred_empty, true);
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("migration: present legacy status-board.json does NOT mark per-Mission copy as inferred_empty (slice 6.1)", () => {
+  const ws = makeWorkspace();
+  try {
+    makeLegacyWorkspace(ws, {
+      mission_id: "present-board-2026-06-17-001",
+      project: "present-board",
+      objective: "Present status board",
+      has_status_board: true, // <-- present
+      has_sessions: true,
+      has_runtime_events: true,
+      has_incident_log: true,
+    });
+    const result = migrateLegacyToPerMission(ws, { now: NOW });
+    assert.equal(result.ok, true);
+    assert.equal(result.files_created_empty.includes("status-board.json"), false);
+
+    const layout = missionLayoutPaths(ws, "present-board-2026-06-17-001");
+    const statusBoardRaw = readFileSync(layout.statusBoardPath, "utf8");
+    const parsed = JSON.parse(statusBoardRaw) as { _meta?: { inferred_empty?: boolean } };
+    assert.equal(parsed._meta?.inferred_empty, undefined);
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("migration: unsafe legacy mission_id returns validation_failed (no throw, no writes, slice 6.1)", () => {
+  const ws = makeWorkspace();
+  try {
+    makeLegacyWorkspace(ws, {
+      mission_id: "../evil",
+      project: "evil",
+      objective: "Path-traversal attempt",
+      has_status_board: true,
+      has_sessions: true,
+      has_runtime_events: true,
+      has_incident_log: true,
+    });
+    let result: ReturnType<typeof migrateLegacyToPerMission> | null = null;
+    let threw = false;
+    try {
+      result = migrateLegacyToPerMission(ws, { now: NOW });
+    } catch {
+      threw = true;
+    }
+    assert.equal(threw, false, "migrateLegacyToPerMission must not throw on unsafe mission_id");
+    assert.ok(result);
+    assert.equal(result.ok, false);
+    assert.equal(result.mode, "validation_failed");
+    assert.match(result.reason ?? "", /mission_id invalid/i);
+    // No writes at all
+    assert.equal(existsSync(join(ws, ".pi", "topology", "missions")), false);
+    assert.equal(existsSync(join(ws, ".pi", "topology", "mission-registry.json")), false);
+    assert.equal(existsSync(join(ws, ".pi", "topology", "active-mission.json")), false);
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("migration: legacy mission_id with embedded slash returns validation_failed (no throw, slice 6.1)", () => {
+  const ws = makeWorkspace();
+  try {
+    makeLegacyWorkspace(ws, {
+      mission_id: "subdir/escape",
+      project: "subdir",
+      objective: "Subdir escape attempt",
+      has_status_board: true,
+      has_sessions: false,
+      has_runtime_events: false,
+      has_incident_log: false,
+    });
+    let result: ReturnType<typeof migrateLegacyToPerMission> | null = null;
+    let threw = false;
+    try {
+      result = migrateLegacyToPerMission(ws, { now: NOW });
+    } catch {
+      threw = true;
+    }
+    assert.equal(threw, false);
+    assert.ok(result);
+    assert.equal(result.ok, false);
+    assert.equal(result.mode, "validation_failed");
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});

@@ -38,7 +38,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { createMissionLayout, missionLayoutPaths } from "./mission-layout.ts";
+import { createMissionLayout, missionLayoutPaths, validateMissionIdPathSegment } from "./mission-layout.ts";
 import {
   addMissionToRegistry,
   createEmptyRegistry,
@@ -298,6 +298,27 @@ export function migrateLegacyToPerMission(
     };
   }
 
+  // Slice 6.1: defense in depth — a legacy mission_id from a hand-edited
+  // or poisoned root file may path-traverse out of the missions root.
+  // `validateMissionCard` does not check the id format; `missionLayoutPaths`
+  // re-validates and throws InvalidMissionIdError, which would turn the
+  // migration into a hard error. Surface this as `validation_failed`
+  // here, BEFORE any files are written.
+  try {
+    validateMissionIdPathSegment(legacy.mission_id);
+  } catch (err) {
+    return {
+      ok: false,
+      mode: "validation_failed",
+      mission_id: legacy.mission_id,
+      reason: `legacy mission_id invalid: ${(err as Error).message}`,
+      files_migrated,
+      files_created_empty,
+      warnings,
+      generated_at,
+    };
+  }
+
   if (options.dryRun) {
     return {
       ok: true,
@@ -321,16 +342,20 @@ export function migrateLegacyToPerMission(
   //          runtime-events.jsonl, incident-log.jsonl, sessions.jsonl,
   //          artifacts/, slices/, etc.).
   const layout = missionLayoutPaths(workspaceDir, legacy.mission_id);
+  // Slice 6.1: track whether the legacy status board was missing so we can
+  // mark the per-Mission copy as inferred_empty per spec §12.1.
+  const legacyStatusBoardMissing = !legacy.status_board;
+  const initialStatusBoard: StatusBoard = legacy.status_board ?? {
+    mission_id: legacy.mission_id,
+    runtime_phase: "intake",
+    last_updated_at: now.toISOString(),
+    pending_packets: [],
+    next_gate: null,
+  };
   const { created } = createMissionLayout({
     workspaceDir,
     missionCard: legacy.mission_card,
-    initialStatusBoard: legacy.status_board ?? ({
-      mission_id: legacy.mission_id,
-      runtime_phase: "intake",
-      last_updated_at: now.toISOString(),
-      pending_packets: [],
-      next_gate: null,
-    } as StatusBoard),
+    initialStatusBoard,
   });
   if (!created) {
     return {
@@ -343,6 +368,28 @@ export function migrateLegacyToPerMission(
       warnings,
       generated_at,
     };
+  }
+
+  // Slice 6.1: when the legacy status board was missing, rewrite the
+  // per-Mission copy with `_meta.inferred_empty: true` so reviewers can
+  // distinguish "truly no events yet" from "legacy file was missing
+  // during migration" (spec §12.1 audit requirement). Also add the
+  // filename to files_created_empty.
+  if (legacyStatusBoardMissing) {
+    try {
+      const raw = readFileSync(layout.statusBoardPath, "utf8");
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      writeFileSync(
+        layout.statusBoardPath,
+        `${JSON.stringify({ ...parsed, _meta: { inferred_empty: true } }, null, 2)}\n`,
+        "utf8",
+      );
+      files_created_empty.push("status-board.json");
+    } catch (err) {
+      warnings.push(
+        `failed to mark status-board.json as inferred_empty: ${(err as Error).message}`,
+      );
+    }
   }
 
   // Step 4: copy legacy files into the per-Mission directory. The
