@@ -154,7 +154,7 @@ function renderMigrationPrompt(cwd: string): string {
     lines.push(`  - incident-log.jsonl (${legacy.files.incident_log.lines} lines)`);
   }
   lines.push("");
-  lines.push("Run `/topology migrate` to apply. The migration is idempotent and non-destructive (legacy root files are kept as readable fallbacks).");
+  lines.push("Run `/topology migrate` to apply. Use `/topology migrate plan` to show this plan again. The migration is idempotent and non-destructive (legacy root files are kept as readable fallbacks).");
   return lines.join("\n");
 }
 
@@ -440,8 +440,11 @@ function renderDashboardVerbose(cwd: string): string {
 
 function renderMigrationPlanOrExecute(cwd: string, args: string): string {
   // Slice 6: /topology migrate [execute]
-  if (args === "execute") {
+  if (args === "" || args === "execute") {
     return formatMigrationResult(migrateLegacyToPerMission(cwd));
+  }
+  if (args === "plan") {
+    return renderMigrationPrompt(cwd);
   }
   return renderMigrationPrompt(cwd);
 }

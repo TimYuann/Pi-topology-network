@@ -561,6 +561,53 @@ test("topology status migrates old mission cards before validation", async () =>
   assert.equal(sessions.length, 7);
 });
 
+test("topology migrate applies legacy migration while migrate plan stays read-only", async () => {
+  const commands: Record<string, { handler: (args: string, ctx: { cwd: string }) => Promise<string> }> = {};
+  const pi = {
+    registerTool() {},
+    registerCommand(name: string, command: { handler: (args: string, ctx: { cwd: string }) => Promise<string> }) {
+      commands[name] = command;
+    },
+    sendMessage() {},
+    on() {},
+    registerFlag() {},
+    getFlag() {
+      return undefined;
+    },
+  };
+  registerPiTopology(pi);
+
+  const cwd = await mkdtemp(join(tmpdir(), "pi-topology-migrate-command-"));
+  const mission = createMissionDraft({
+    project: "legacy",
+    workdir: cwd,
+    objective: "Legacy mission for command migration",
+    allowed_paths: [cwd],
+  });
+  await mkdir(join(cwd, ".pi/topology"), { recursive: true });
+  await writeFile(join(cwd, ".pi/topology/mission-card.json"), `${JSON.stringify(mission, null, 2)}\n`, "utf8");
+  await writeFile(join(cwd, ".pi/topology/status-board.json"), `${JSON.stringify(createInitialStatusBoard(mission), null, 2)}\n`, "utf8");
+  await writeFile(join(cwd, ".pi/topology/sessions.jsonl"), "{\"state\":\"alive_confirmed\"}\n", "utf8");
+  await writeFile(join(cwd, ".pi/topology/runtime-events.jsonl"), "{\"event_type\":\"legacy\"}\n", "utf8");
+  await writeFile(join(cwd, ".pi/topology/incident-log.jsonl"), "", "utf8");
+
+  const plan = await commands.topology.handler("migrate plan", { cwd });
+  assert.match(plan, /Topology migration available/);
+  await assert.rejects(readFile(join(cwd, ".pi/topology/mission-registry.json"), "utf8"));
+
+  const migrated = await commands.topology.handler("migrate", { cwd });
+  assert.match(migrated, /topology migrate: migrated/);
+  assert.match(migrated, /ok: true/);
+  assert.match(migrated, /mission_id:/);
+
+  const registry = JSON.parse(await readFile(join(cwd, ".pi/topology/mission-registry.json"), "utf8"));
+  assert.equal(registry.active_mission_id, mission.mission_id);
+  const pointer = JSON.parse(await readFile(join(cwd, ".pi/topology/active-mission.json"), "utf8"));
+  assert.equal(pointer.mission_id, mission.mission_id);
+  const perMissionCard = JSON.parse(await readFile(join(cwd, ".pi/topology/missions", mission.mission_id, "mission-card.json"), "utf8"));
+  assert.equal(perMissionCard.mission_id, mission.mission_id);
+});
+
 test("topology status refreshes existing launch scripts without duplicating session ledger", async () => {
   const commands: Record<string, { handler: (args: string, ctx: { cwd: string }) => Promise<string> }> = {};
   const pi = {
