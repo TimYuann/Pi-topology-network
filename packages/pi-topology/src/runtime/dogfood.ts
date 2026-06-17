@@ -182,9 +182,13 @@ function makeRunId(): string {
 
 /** Create a deterministic `pi` stub on a tmp dir and return its path. */
 function createPiStubDir(): string {
-  const dir = mkdirSync(path.join(tmpdir(), `pi-stub-${makeRunId()}`), { recursive: true }) ?
-    path.join(tmpdir(), `pi-stub-${makeRunId()}`) :
-    path.join(tmpdir(), "pi-stub-fallback");
+  // Slice 7.2: compute the path ONCE so cleanup tracks the exact dir
+  // that was created. The previous implementation called `makeRunId()`
+  // twice — the first call created a directory that was then discarded
+  // (the truthy branch re-computed a different path), so cleanup only
+  // knew about the second directory. That left one stub dir leaking
+  // per dogfood run.
+  const dir = path.join(tmpdir(), `pi-stub-${makeRunId()}`);
   mkdirSync(dir, { recursive: true });
   const stub = path.join(dir, "pi");
   writeFileSync(
