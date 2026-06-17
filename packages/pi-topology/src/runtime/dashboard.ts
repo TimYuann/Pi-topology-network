@@ -422,8 +422,8 @@ export function readDashboardSnapshot(
       role_classifications = classifications.map((c) => ({
         role: c.role,
         state: c.state,
-        latest_record_state: c.latest_record?.state ?? "none",
-        age_ms: c.latest_record ? now.getTime() - new Date(c.latest_record.timestamp).getTime() : -1,
+        latest_record_state: c.latest_event_type ?? "none",
+        age_ms: c.latest_event_timestamp ? now.getTime() - new Date(c.latest_event_timestamp).getTime() : -1,
         needs_liveness_confirmation: c.needs_liveness_confirmation ?? false,
       }));
     } else {

@@ -191,6 +191,43 @@ test("getRoleSessionRecords tolerates malformed lines (skip, don't throw)", () =
   }
 });
 
+test("getRoleSessionRecords maps legacy state field to event_type during read", () => {
+  const ws = makeWorkspace();
+  try {
+    const { card, layout } = makeMissionLayout(ws, "dogfood", "legacy-state");
+    writeFileSync(
+      layout.sessionsPath,
+      [
+        JSON.stringify({
+          record_id: "sess_legacy_1",
+          mission_id: card.mission_id,
+          role: "hq",
+          state: "alive_confirmed",
+          session_id: "hq-1",
+          script_path: "/legacy/hq.sh",
+          timestamp: "2026-06-16T00:00:00.000Z",
+        }),
+        "[topology] launch 2026-06-16T00:00:00Z role=hq",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const records = getRoleSessionRecords(ws, card.mission_id);
+    assert.equal(records.length, 1);
+    assert.equal(records[0]?.event_type, "alive_confirmed");
+    const latest = latestRecordForRole(records, "hq");
+    assert.equal(latest?.event_type, "alive_confirmed");
+    const classification = classifyRole("hq", records, {
+      now: new Date("2026-06-16T00:20:01.000Z"),
+    });
+    assert.equal(classification.state, "stale");
+    assert.equal(classification.latest_event_type, "alive_confirmed");
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
 test("latestRecordForRole returns the most recent record per role", () => {
   const records = [
     record({ mission_id: "m", role: "hq", event_type: "script_written", timestamp: "2026-06-17T00:00:00.000Z" }),

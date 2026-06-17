@@ -186,7 +186,11 @@ export function getRoleSessionRecords(
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
-      out.push(JSON.parse(trimmed) as RoleSessionRecord);
+      const parsed = JSON.parse(trimmed) as RoleSessionRecord & { state?: unknown };
+      if (parsed.event_type === undefined && typeof parsed.state === "string") {
+        parsed.event_type = parsed.state as RoleSessionEventType;
+      }
+      out.push(parsed);
     } catch {
       // Skip malformed lines defensively; classification tolerates this.
     }

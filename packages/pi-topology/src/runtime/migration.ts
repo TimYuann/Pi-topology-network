@@ -36,7 +36,7 @@
  *   - No raw transport touched.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createMissionLayout, missionLayoutPaths, validateMissionIdPathSegment } from "./mission-layout.ts";
 import {
@@ -59,6 +59,15 @@ import {
 } from "./mission-events.ts";
 import { validateMissionCard, type MissionCard, type StatusBoard } from "./mission.ts";
 import { ROOT_MISSION_CARD_RELATIVE } from "./supervisor-picker.ts";
+import {
+  appendPacketLedger,
+  PACKET_STATES,
+  PACKET_TYPES,
+  type PacketLedgerEntry,
+  type PacketState,
+  type PacketType,
+} from "./packet-ledger.ts";
+import type { TopologyRole } from "./mission.ts";
 
 export const ROOT_MISSION_CARD_PATH = ROOT_MISSION_CARD_RELATIVE;
 
@@ -66,6 +75,18 @@ export const ROOT_STATUS_BOARD_PATH = ".pi/topology/status-board.json";
 export const ROOT_SESSIONS_PATH = ".pi/topology/sessions.jsonl";
 export const ROOT_RUNTIME_EVENTS_PATH = ".pi/topology/runtime-events.jsonl";
 export const ROOT_INCIDENT_LOG_PATH = ".pi/topology/incident-log.jsonl";
+export const ROOT_LAUNCH_DIR = ".pi/topology/launch";
+export const ROOT_ARTIFACTS_DIR = ".pi/topology/artifacts";
+
+const TOPOLOGY_ROLE_SET = new Set<TopologyRole>([
+  "topology-supervisor",
+  "hq",
+  "repair",
+  "runner",
+  "oracle",
+  "librarian",
+  "scott",
+]);
 
 export interface LegacyMissionData {
   mission_id: string;
@@ -188,6 +209,93 @@ function copyFileSyncCompat(source: string, dest: string): boolean {
   mkdirSync(path.dirname(dest), { recursive: true });
   writeFileSync(dest, content, "utf8");
   return true;
+}
+
+function listRelativeFiles(dir: string, prefix = ""): string[] {
+  if (!existsSync(dir)) return [];
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const rel = path.join(prefix, entry.name);
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...listRelativeFiles(full, rel));
+    } else {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
+function copyDirectoryContents(sourceDir: string, destDir: string, resultPrefix: string): string[] {
+  if (!existsSync(sourceDir)) return [];
+  mkdirSync(destDir, { recursive: true });
+  const copied = listRelativeFiles(sourceDir).map((rel) => path.join(resultPrefix, rel));
+  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+    cpSync(path.join(sourceDir, entry.name), path.join(destDir, entry.name), {
+      recursive: true,
+      force: true,
+    });
+  }
+  return copied;
+}
+
+function isTopologyRole(value: unknown): value is TopologyRole {
+  return typeof value === "string" && TOPOLOGY_ROLE_SET.has(value as TopologyRole);
+}
+
+function isPacketState(value: unknown): value is PacketState {
+  return typeof value === "string" && (PACKET_STATES as readonly string[]).includes(value);
+}
+
+function isPacketType(value: unknown): value is PacketType {
+  return typeof value === "string" && (PACKET_TYPES as readonly string[]).includes(value);
+}
+
+function migrateLegacyPendingPackets(
+  workspaceDir: string,
+  layout: ReturnType<typeof missionLayoutPaths>,
+  statusBoard: StatusBoard | null,
+): number {
+  const pending = Array.isArray(statusBoard?.pending_packets) ? statusBoard.pending_packets : [];
+  let migrated = 0;
+  for (const raw of pending) {
+    if (!raw || typeof raw !== "object") continue;
+    const packet = raw as Record<string, unknown>;
+    if (
+      typeof packet.packet_id !== "string" ||
+      !isPacketType(packet.type) ||
+      !isTopologyRole(packet.from) ||
+      !isTopologyRole(packet.to)
+    ) {
+      continue;
+    }
+    const sentAt = typeof packet.sent_at === "string" ? packet.sent_at : new Date().toISOString();
+    const lastSeen =
+      (typeof packet.closed_at === "string" && packet.closed_at) ||
+      (typeof packet.report_acknowledged_at === "string" && packet.report_acknowledged_at) ||
+      (typeof packet.reported_at === "string" && packet.reported_at) ||
+      (typeof packet.acknowledged_at === "string" && packet.acknowledged_at) ||
+      (typeof packet.delivered_at === "string" && packet.delivered_at) ||
+      sentAt;
+    const entry: PacketLedgerEntry = {
+      packet_id: packet.packet_id,
+      mission_id: layout.missionId,
+      type: packet.type as PacketType,
+      from: packet.from,
+      to: packet.to,
+      request_msg_id: typeof packet.request_msg_id === "string" ? packet.request_msg_id : null,
+      correlation_id: typeof packet.correlation_id === "string" ? packet.correlation_id : null,
+      state: isPacketState(packet.state) ? packet.state : "delivered",
+      raw_transport_path: ROOT_STATUS_BOARD_PATH,
+      first_seen_at: sentAt,
+      last_seen_at: lastSeen,
+      classification_reason: "migrated from legacy status-board pending_packets",
+      artifact_path: null,
+    };
+    appendPacketLedger(workspaceDir, layout, entry);
+    migrated += 1;
+  }
+  return migrated;
 }
 
 /** Write a JSON file with `_meta.inferred_empty: true` for legacy-missing files. */
@@ -428,6 +536,24 @@ export function migrateLegacyToPerMission(
   } else {
     writeInferredEmptyJsonl(layout.incidentLogPath);
     files_created_empty.push("incident-log.jsonl");
+  }
+
+  const launchFiles = copyDirectoryContents(
+    path.join(workspaceDir, ROOT_LAUNCH_DIR),
+    layout.launchDir,
+    "launch",
+  );
+  files_migrated.push(...launchFiles);
+  const artifactFiles = copyDirectoryContents(
+    path.join(workspaceDir, ROOT_ARTIFACTS_DIR),
+    layout.artifactsDir,
+    "artifacts",
+  );
+  files_migrated.push(...artifactFiles);
+
+  const migratedPacketCount = migrateLegacyPendingPackets(workspaceDir, layout, legacy.status_board);
+  if (migratedPacketCount > 0) {
+    files_migrated.push("packet-ledger.jsonl");
   }
 
   // Step 5: write mission-registry.json.

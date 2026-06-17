@@ -19,6 +19,7 @@ import { readMissionRegistry } from "../../src/runtime/mission-registry.ts";
 import { readActiveMissionPointer } from "../../src/runtime/mission-pointer.ts";
 import { missionLayoutPaths } from "../../src/runtime/mission-layout.ts";
 import { createMissionDraft } from "../../src/runtime/mission.ts";
+import { getPacketLedgerEntries } from "../../src/runtime/packet-ledger.ts";
 
 const NOW = new Date("2026-06-17T00:00:00.000Z");
 
@@ -326,6 +327,104 @@ test("migration: appends mission_lifecycle_transition event to runtime-events.js
     assert.equal(migrationEvent.event_type, "mission_lifecycle_transition");
     assert.match(migrationEvent.reason, /migrated from legacy/);
     assert.equal(migrationEvent.from_state, "intake");
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("migration: copies legacy launch scripts and artifacts into per-Mission canonical dirs", () => {
+  const ws = makeWorkspace();
+  try {
+    makeLegacyWorkspace(ws, {
+      mission_id: "assets-2026-06-17-001",
+      project: "assets",
+      objective: "Asset migration",
+      has_status_board: true,
+      has_sessions: false,
+      has_runtime_events: false,
+      has_incident_log: false,
+    });
+    mkdirSync(join(ws, ".pi", "topology", "launch"), { recursive: true });
+    writeFileSync(join(ws, ".pi", "topology", "launch", "hq.sh"), "#!/bin/sh\n", "utf8");
+    mkdirSync(join(ws, ".pi", "topology", "artifacts", "topology-supervisor"), { recursive: true });
+    writeFileSync(
+      join(ws, ".pi", "topology", "artifacts", "topology-supervisor", "handoff.md"),
+      "legacy artifact\n",
+      "utf8",
+    );
+
+    const result = migrateLegacyToPerMission(ws, { now: NOW });
+    assert.equal(result.ok, true);
+    assert.equal(result.files_migrated.includes("launch/hq.sh"), true);
+    assert.equal(result.files_migrated.includes("artifacts/topology-supervisor/handoff.md"), true);
+
+    const layout = missionLayoutPaths(ws, "assets-2026-06-17-001");
+    assert.equal(readFileSync(join(layout.launchDir, "hq.sh"), "utf8"), "#!/bin/sh\n");
+    assert.equal(
+      readFileSync(join(layout.artifactsDir, "topology-supervisor", "handoff.md"), "utf8"),
+      "legacy artifact\n",
+    );
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("migration: derives packet-ledger.jsonl from legacy status-board pending_packets", () => {
+  const ws = makeWorkspace();
+  try {
+    makeLegacyWorkspace(ws, {
+      mission_id: "packets-2026-06-17-001",
+      project: "packets",
+      objective: "Packet migration",
+      has_status_board: true,
+      has_sessions: false,
+      has_runtime_events: false,
+      has_incident_log: false,
+    });
+    writeFileSync(
+      join(ws, ROOT_STATUS_BOARD_PATH),
+      JSON.stringify(
+        {
+          mission_id: "packets-2026-06-17-001",
+          runtime_phase: "running",
+          last_updated_at: NOW.toISOString(),
+          next_gate: null,
+          pending_packets: [
+            {
+              packet_id: "pkt_legacy_1",
+              type: "REQUEST",
+              from: "hq",
+              to: "runner",
+              state: "acknowledged",
+              sent_at: "2026-06-17T00:00:00.000Z",
+              acknowledged_at: "2026-06-17T00:01:00.000Z",
+            },
+            {
+              packet_id: "pkt_invalid_type",
+              type: "CHAT",
+              from: "hq",
+              to: "runner",
+              state: "sent",
+              sent_at: "2026-06-17T00:00:00.000Z",
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = migrateLegacyToPerMission(ws, { now: NOW });
+    assert.equal(result.ok, true);
+    assert.equal(result.files_migrated.includes("packet-ledger.jsonl"), true);
+
+    const entries = getPacketLedgerEntries(ws, "packets-2026-06-17-001");
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0]?.packet_id, "pkt_legacy_1");
+    assert.equal(entries[0]?.mission_id, "packets-2026-06-17-001");
+    assert.equal(entries[0]?.state, "acknowledged");
+    assert.equal(entries[0]?.raw_transport_path, ROOT_STATUS_BOARD_PATH);
   } finally {
     rmSync(ws, { recursive: true, force: true });
   }
