@@ -85,6 +85,8 @@ Minimal acceptance smoke for tool/command registration and command path sanity.
 
 Important: real MiniMax M3 + Ghostty smoke was verified on 2026-06-16 for local JSONL transport and role/tool behavior. HTTP/SSE transport remains a compatibility target.
 
+Current Mac caveat from 2026-06-17: unattended Ghostty GUI command execution is not a stable E2E gate on this machine. Use direct generated role scripts as the local launch evidence lane until `open -n -a Ghostty --args -e /usr/bin/touch /tmp/probe` runs without failed-command windows or abnormal-process logs.
+
 ### 5) `topology_cleanup`
 
 Release local/topology session artifacts and temp runtime state in non-production workspaces.
@@ -113,4 +115,5 @@ Use only with explicit mission-level scope; do not delete runtime DB/cache durin
 
 - Package tool registration is present in current package code and unit assertions.
 - `pi install .` and real multi-session MiniMax M3 + Ghostty smoke are verified in local artifacts.
+- `launch_requested` is terminal-open evidence only. On the current Mac, direct generated script execution plus registry/runtime/log evidence is the preferred E2E proof until the Ghostty GUI probe is stable.
 - HTTP/SSE transport and Package Hub publication remain outside the verified local scope.
