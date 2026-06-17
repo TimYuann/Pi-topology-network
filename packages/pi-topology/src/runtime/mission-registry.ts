@@ -1,0 +1,209 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import type { MissionLifecycleState } from "./mission-lifecycle.ts";
+
+/**
+ * Mission Registry — derived summary view over per-Mission evidence files.
+ *
+ * Spec reference: `docs/14-pi-topology-mission-runtime-spec.md` §3.4
+ *
+ * The registry is a CACHE. Per-Mission files under `.pi/topology/missions/<id>/`
+ * are the source of truth. Registry summaries (role_summary, pending_packet_count,
+ * incident_count) are derived views that must be re-derivable from the per-Mission
+ * files at any time.
+ *
+ * Slice 1 contract:
+ *   - create / read / write the registry file
+ *   - add a mission entry (without computing derived summaries — those land in
+ *     slice 3 session registry and slice 4 packet cleanup)
+ *   - find a mission by id
+ *   - list mission ids
+ */
+
+export const MISSION_REGISTRY_VERSION = 1 as const;
+
+export const MISSION_REGISTRY_FILENAME = "mission-registry.json";
+export const ACTIVE_MISSION_POINTER_FILENAME = "active-mission.json";
+
+export type OwnerGateState = "required" | "clear";
+export type RoleLivenessSummary = "live" | "resumable" | "stale" | "parked" | "closed";
+
+export interface MissionRegistryRoleSummary {
+  live: number;
+  resumable: number;
+  stale: number;
+  parked: number;
+  closed: number;
+}
+
+export interface MissionRegistryEntry {
+  mission_id: string;
+  mission_dir: string;
+  title: string;
+  objective: string;
+  lifecycle_state: MissionLifecycleState;
+  owner_gate: OwnerGateState;
+  blocked: boolean;
+  archived: boolean;
+  last_updated_at: string;
+  role_summary: MissionRegistryRoleSummary;
+  pending_packet_count: number;
+  incident_count: number;
+  closeout_path: string | null;
+}
+
+export interface MissionRegistry {
+  version: typeof MISSION_REGISTRY_VERSION;
+  active_mission_id: string | null;
+  updated_at: string;
+  missions: MissionRegistryEntry[];
+}
+
+export function registryFilePath(workspaceDir: string): string {
+  return path.join(workspaceDir, ".pi", "topology", MISSION_REGISTRY_FILENAME);
+}
+
+export function missionRegistryDir(workspaceDir: string): string {
+  return path.join(workspaceDir, ".pi", "topology", "missions");
+}
+
+export function emptyRoleSummary(): MissionRegistryRoleSummary {
+  return { live: 0, resumable: 0, stale: 0, parked: 0, closed: 0 };
+}
+
+export function createEmptyRegistry(now: Date = new Date()): MissionRegistry {
+  return {
+    version: MISSION_REGISTRY_VERSION,
+    active_mission_id: null,
+    updated_at: now.toISOString(),
+    missions: [],
+  };
+}
+
+export function readMissionRegistry(workspaceDir: string): MissionRegistry | null {
+  const filePath = registryFilePath(workspaceDir);
+  if (!existsSync(filePath)) return null;
+  const raw = readFileSync(filePath, "utf8");
+  return JSON.parse(raw) as MissionRegistry;
+}
+
+export function writeMissionRegistry(workspaceDir: string, registry: MissionRegistry): void {
+  const filePath = registryFilePath(workspaceDir);
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(filePath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
+}
+
+export interface NewMissionRegistryEntryInput {
+  mission_id: string;
+  title: string;
+  objective: string;
+  lifecycle_state: MissionLifecycleState;
+  owner_gate?: OwnerGateState;
+  blocked?: boolean;
+  archived?: boolean;
+  closeout_path?: string | null;
+  mission_dir?: string;
+  now?: Date;
+}
+
+export function newMissionRegistryEntry(input: NewMissionRegistryEntryInput): MissionRegistryEntry {
+  const now = (input.now ?? new Date()).toISOString();
+  return {
+    mission_id: input.mission_id,
+    mission_dir: input.mission_dir ?? `.pi/topology/missions/${input.mission_id}`,
+    title: input.title,
+    objective: input.objective,
+    lifecycle_state: input.lifecycle_state,
+    owner_gate: input.owner_gate ?? "required",
+    blocked: input.blocked ?? false,
+    archived: input.archived ?? false,
+    last_updated_at: now,
+    role_summary: emptyRoleSummary(),
+    pending_packet_count: 0,
+    incident_count: 0,
+    closeout_path: input.closeout_path ?? null,
+  };
+}
+
+export interface AddMissionResult {
+  registry: MissionRegistry;
+  entry: MissionRegistryEntry;
+  added: boolean;
+}
+
+export function addMissionToRegistry(
+  registry: MissionRegistry,
+  entry: MissionRegistryEntry,
+  now: Date = new Date(),
+): AddMissionResult {
+  const existingIndex = registry.missions.findIndex((m) => m.mission_id === entry.mission_id);
+  const next: MissionRegistry = {
+    ...registry,
+    updated_at: now.toISOString(),
+    missions: [...registry.missions],
+  };
+  if (existingIndex >= 0) {
+    next.missions[existingIndex] = entry;
+    return { registry: next, entry, added: false };
+  }
+  next.missions.push(entry);
+  return { registry: next, entry, added: true };
+}
+
+export function findMissionInRegistry(
+  registry: MissionRegistry,
+  missionId: string,
+): MissionRegistryEntry | undefined {
+  return registry.missions.find((m) => m.mission_id === missionId);
+}
+
+export function listMissionIds(registry: MissionRegistry): string[] {
+  return registry.missions.map((m) => m.mission_id);
+}
+
+export function setRegistryActiveMission(
+  registry: MissionRegistry,
+  missionId: string | null,
+  now: Date = new Date(),
+): MissionRegistry {
+  return {
+    ...registry,
+    active_mission_id: missionId,
+    updated_at: now.toISOString(),
+  };
+}
+
+export function validateMissionRegistry(input: unknown): { ok: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (!input || typeof input !== "object") {
+    return { ok: false, errors: ["mission registry must be an object"] };
+  }
+  const r = input as Partial<MissionRegistry>;
+  if (r.version !== MISSION_REGISTRY_VERSION) {
+    errors.push(`registry version must be ${MISSION_REGISTRY_VERSION}`);
+  }
+  if (r.active_mission_id !== null && typeof r.active_mission_id !== "string") {
+    errors.push("active_mission_id must be a string or null");
+  }
+  if (typeof r.updated_at !== "string") errors.push("updated_at must be an ISO string");
+  if (!Array.isArray(r.missions)) {
+    errors.push("missions must be an array");
+  } else {
+    for (const [i, m] of r.missions.entries()) {
+      if (!m || typeof m !== "object") {
+        errors.push(`missions[${i}] must be an object`);
+        continue;
+      }
+      const entry = m as Partial<MissionRegistryEntry>;
+      if (!entry.mission_id) errors.push(`missions[${i}].mission_id is required`);
+      if (!entry.mission_dir) errors.push(`missions[${i}].mission_dir is required`);
+      if (!entry.title) errors.push(`missions[${i}].title is required`);
+      if (!entry.objective) errors.push(`missions[${i}].objective is required`);
+      if (!entry.lifecycle_state) errors.push(`missions[${i}].lifecycle_state is required`);
+      if (entry.owner_gate !== "required" && entry.owner_gate !== "clear") {
+        errors.push(`missions[${i}].owner_gate must be 'required' or 'clear'`);
+      }
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
