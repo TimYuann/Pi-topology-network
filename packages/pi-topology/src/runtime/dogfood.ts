@@ -109,12 +109,18 @@ export interface DogfoodRun {
   generated_scripts: LaunchScriptEntry[];
   /** Supervisor script launch mode. */
   launch_mode: "direct-script-with-pi-stub";
+  /** Path to the pi stub directory (created on /tmp; cleaned up by
+   * `cleanupDogfood`). Slice 7.1 tracks this so the stub dir does not
+   * leak across dogfood runs. */
+  pi_stub_dir: string;
   /** Terminal log path (where the script wrote its startup line). */
   terminal_log_path: string;
   /** Session file path or partial UUID (N/A for stub, or sessions.jsonl record_id). */
   pi_session_file_path: string;
   /** All PIDs involved in the run (bash + spawned children). */
   pids: number[];
+  /** Supervisor script child-process exit code (null if not yet captured). */
+  supervisor_exit_code: number | null;
   /** Path to the per-mission sessions.jsonl. */
   sessions_path: string;
   /** Path to the per-mission runtime-events.jsonl. */
@@ -139,6 +145,8 @@ export interface DogfoodRun {
   cleaned_up: boolean;
   /** Post-cleanup ps proof (pgrep output). */
   post_cleanup_ps_proof: string;
+  /** Post-cleanup pi-stub-dir removal proof. */
+  post_cleanup_stub_proof: string;
   /** Run started at (ISO). */
   started_at: string;
   /** Run finished at (ISO). */
@@ -318,8 +326,10 @@ export async function runDogfoodAcceptance(options: DogfoodOptions = {}): Promis
   const terminalLogPath = path.join(run_root, "logs", "topology-supervisor.log");
   mkdirSync(path.dirname(terminalLogPath), { recursive: true });
   let supervisorProc: ChildProcess | null = null;
+  let piStubDir = "";
+  let supervisorExitCode: number | null = null;
   if (options.launchSupervisor !== false) {
-    const piStubDir = createPiStubDir();
+    piStubDir = createPiStubDir();
     const supervisorScript = launchScripts.find((e) => e.role === "topology-supervisor");
     if (supervisorScript) {
       // Inject the log path via env so the script writes the startup line.
@@ -338,6 +348,9 @@ export async function runDogfoodAcceptance(options: DogfoodOptions = {}): Promis
         detached: false,
       });
       pids.push(supervisorProc.pid ?? -1);
+      supervisorProc.on("exit", (code) => {
+        supervisorExitCode = code;
+      });
     }
   }
 
@@ -469,7 +482,8 @@ export async function runDogfoodAcceptance(options: DogfoodOptions = {}): Promis
   if (supervisorProc) {
     await new Promise<void>((resolve) => {
       const timer = setTimeout(resolve, 1500);
-      supervisorProc!.on("exit", () => {
+      supervisorProc!.on("exit", (code) => {
+        supervisorExitCode = code;
         clearTimeout(timer);
         resolve();
       });
@@ -501,9 +515,11 @@ export async function runDogfoodAcceptance(options: DogfoodOptions = {}): Promis
     mission_dir: layout.missionDirAbsolute,
     generated_scripts: launchScripts,
     launch_mode: "direct-script-with-pi-stub",
+    pi_stub_dir: piStubDir,
     terminal_log_path: terminalLogPath,
     pi_session_file_path: "n/a (pi stub used; sessions.jsonl record_id=sess-hq-dogfood-1)",
     pids: pids.filter((p) => p > 0),
+    supervisor_exit_code: supervisorExitCode,
     sessions_path: layout.sessionsPath,
     runtime_events_path: layout.runtimeEventsPath,
     packet_ledger_path: layout.packetLedgerPath,
@@ -516,6 +532,7 @@ export async function runDogfoodAcceptance(options: DogfoodOptions = {}): Promis
     cleanup_command: cleanupCommand,
     cleaned_up: false,
     post_cleanup_ps_proof: "(not yet run)",
+    post_cleanup_stub_proof: "(not yet run)",
     started_at,
     finished_at,
     warnings,
@@ -640,6 +657,23 @@ export function cleanupDogfood(run: DogfoodRun): DogfoodRun {
     // best effort
   }
 
+  // Remove the pi stub directory (slice 7.1). The stub dir is created
+  // under system tmp by `createPiStubDir` and was previously leaking
+  // across dogfood runs. Track it on the run and clean it up here.
+  let stubProof = "cleanup_ok_stub_already_missing";
+  if (run.pi_stub_dir) {
+    try {
+      rmSync(run.pi_stub_dir, { recursive: true, force: true });
+    } catch {
+      // best effort
+    }
+    if (existsSync(run.pi_stub_dir)) {
+      stubProof = `RESIDUAL: ${run.pi_stub_dir} still exists`;
+    } else {
+      stubProof = `cleanup_ok_stub_removed:${run.pi_stub_dir}`;
+    }
+  }
+
   // Final narrow pgrep proof.
   let final = "";
   try {
@@ -658,6 +692,7 @@ export function cleanupDogfood(run: DogfoodRun): DogfoodRun {
     ...run,
     cleaned_up: true,
     post_cleanup_ps_proof: postCleanupProof,
+    post_cleanup_stub_proof: stubProof,
   };
 }
 
@@ -687,6 +722,9 @@ export function formatDogfoodEvidence(run: DogfoodRun): string {
   lines.push(`9. cleanup_command: \`${run.cleanup_command}\``);
   lines.push(`10. post_cleanup_ps_proof: ${run.post_cleanup_ps_proof}`);
   lines.push("");
+  lines.push(`pi_stub_dir: ${run.pi_stub_dir}`);
+  lines.push(`supervisor_exit_code: ${run.supervisor_exit_code ?? "(not captured)"}`);
+  lines.push(`post_cleanup_stub_proof: ${run.post_cleanup_stub_proof}`);
   lines.push("## Dashboard (compact)");
   lines.push("```");
   lines.push(run.dashboard_text);

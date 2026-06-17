@@ -62,16 +62,17 @@ test("dogfood: full slice 1-6 acceptance run", { timeout: 30_000 }, async () => 
     }
 
     // 4. Verify the supervisor script actually ran. The pi stub captures
-    // the launch args in the terminal log; the script's own
-    // `[topology] launch` line is only written when logPath is passed
-    // to writeRoleLaunchScript, which the sync launcher does not do
-    // (by design — the script template accepts logPath as an option).
-    // The presence of either proves the launch started.
-    if (existsSync(run.terminal_log_path)) {
-      const log = readFileSync(run.terminal_log_path, "utf8");
-      assert.ok(log.length > 0, "terminal log should be non-empty after launch");
-      assert.match(log, /launch/i, "terminal log should contain a launch line");
-    }
+    // the launch args in the terminal log. Slice 7.1 tightens this
+    // from "if exists" to a strict assertion: log MUST exist, MUST be
+    // non-empty, MUST contain the stub's launch marker, MUST contain
+    // the --cname topology-supervisor flag, and the supervisor child
+    // process exit code MUST be 0.
+    assert.ok(existsSync(run.terminal_log_path), `terminal log should exist at ${run.terminal_log_path}`);
+    const log = readFileSync(run.terminal_log_path, "utf8");
+    assert.ok(log.length > 0, "terminal log should be non-empty after launch");
+    assert.match(log, /\[pi-stub\] launched/, "terminal log should contain the pi-stub launch marker");
+    assert.match(log, /--cname topology-supervisor/, "terminal log should capture the supervisor launch args");
+    assert.equal(run.supervisor_exit_code, 0, `supervisor child-process exit code should be 0 (got ${run.supervisor_exit_code})`);
 
     // 5. Verify the dashboard populated all 8 spec §10 fields.
     const snap = run.dashboard_snapshot;
@@ -108,7 +109,9 @@ test("dogfood: full slice 1-6 acceptance run", { timeout: 30_000 }, async () => 
     run = cleanupDogfood(run);
     assert.equal(run.cleaned_up, true);
     assert.match(run.post_cleanup_ps_proof, /cleanup_ok_no_residual_processes/);
+    assert.match(run.post_cleanup_stub_proof, /cleanup_ok_stub/, "pi-stub dir should be cleaned up (slice 7.1)");
     assert.equal(existsSync(run.run_root), false, "run_root should be removed");
+    assert.equal(existsSync(run.pi_stub_dir), false, "pi_stub_dir should be removed (slice 7.1)");
 
     // 9. Save evidence AFTER cleanup so the post-cleanup ps proof is
     // included in the artifact.

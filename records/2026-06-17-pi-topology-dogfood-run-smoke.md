@@ -1,7 +1,7 @@
 # Dogfood Run — smoke
 
-started_at: 2026-06-17T14:29:31.969Z
-finished_at: 2026-06-17T14:29:32.370Z
+started_at: 2026-06-17T14:53:20.112Z
+finished_at: 2026-06-17T14:53:20.579Z
 run_root: /var/folders/vq/dk3gntzd7dz529mp_57ybgyh0000gn/T/pi-topology-dogfood-smoke
 mission_id: dogfood-smoke-2026-06-17-001
 mission_title: Slice 7 smoke: verify slice 1-6 end-to-end
@@ -19,13 +19,16 @@ mission_title: Slice 7 smoke: verify slice 1-6 end-to-end
    - librarian: /var/folders/vq/dk3gntzd7dz529mp_57ybgyh0000gn/T/pi-topology-dogfood-smoke/.pi/topology/launch/librarian.sh
    - scott: /var/folders/vq/dk3gntzd7dz529mp_57ybgyh0000gn/T/pi-topology-dogfood-smoke/.pi/topology/launch/scott.sh
 4. pi_session_file_path: n/a (pi stub used; sessions.jsonl record_id=sess-hq-dogfood-1)
-5. pids: 83132
+5. pids: 26531
 6. sessions_path: /var/folders/vq/dk3gntzd7dz529mp_57ybgyh0000gn/T/pi-topology-dogfood-smoke/.pi/topology/missions/dogfood-smoke-2026-06-17-001/sessions.jsonl
 7. runtime_events_path: /var/folders/vq/dk3gntzd7dz529mp_57ybgyh0000gn/T/pi-topology-dogfood-smoke/.pi/topology/missions/dogfood-smoke-2026-06-17-001/runtime-events.jsonl
 8. terminal_log_path: /var/folders/vq/dk3gntzd7dz529mp_57ybgyh0000gn/T/pi-topology-dogfood-smoke/logs/topology-supervisor.log
 9. cleanup_command: `pgrep -f '/var/folders/vq/dk3gntzd7dz529mp_57ybgyh0000gn/T/pi-topology-dogfood-smoke' | xargs -r kill -TERM 2>/dev/null; sleep 1; pgrep -f '/var/folders/vq/dk3gntzd7dz529mp_57ybgyh0000gn/T/pi-topology-dogfood-smoke' | xargs -r kill -KILL 2>/dev/null; rm -rf '/var/folders/vq/dk3gntzd7dz529mp_57ybgyh0000gn/T/pi-topology-dogfood-smoke'; pgrep -f '/var/folders/vq/dk3gntzd7dz529mp_57ybgyh0000gn/T/pi-topology-dogfood-smoke' || echo "cleanup_ok_no_residual_processes"`
 10. post_cleanup_ps_proof: cleanup_ok_no_residual_processes
 
+pi_stub_dir: /var/folders/vq/dk3gntzd7dz529mp_57ybgyh0000gn/T/pi-stub-20260617-145320-28xh
+supervisor_exit_code: 0
+post_cleanup_stub_proof: cleanup_ok_stub_removed:/var/folders/vq/dk3gntzd7dz529mp_57ybgyh0000gn/T/pi-stub-20260617-145320-28xh
 ## Dashboard (compact)
 ```
 mission: dogfood-smoke-2026-06-17-001 (Slice 7 smoke: verify slice 1-6 end-to-end)
