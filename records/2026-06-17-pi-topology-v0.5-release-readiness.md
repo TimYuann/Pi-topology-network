@@ -4,7 +4,7 @@
 项目：OMP拓扑网络 / `packages/pi-topology`
 版本：v0.5
 状态：✅ Ready for Reviewer approval
-HEAD：`b02df33 docs(pi-topology): v0.5 release readiness`
+readiness evidence commit：`9b46e89 fix(v0.5-readiness): correct stale HEAD refs, pending-commit language, and number inconsistencies`
 范围：`docs/13` PRD v0.5 + `docs/14` Spec v0.5
 **不实现**：`docs/15` v0.6 hardening notes（不是 PRD/Spec，也不是 v0.5 release blocker）
 
@@ -275,11 +275,11 @@ Legacy migration step: `mode: "migrated"`, sibling workspace migrated successful
 
 | 项 | 值 |
 |---|---|
-| Local master HEAD | `b02df33 docs(pi-topology): v0.5 release readiness` |
-| 总 commit 数 | 55 |
+| readiness evidence commit | `9b46e89 fix(v0.5-readiness): correct stale HEAD refs, pending-commit language, and number inconsistencies` |
+| 总 commit 数 | 56 |
 | Slice 主 commit 数 | 7 |
 | Slice hotfix commit 数 | 11 |
-| Handoff doc commit 数 | ~13 |
+| Handoff doc commit 数 | ~14 |
 | Working tree | clean (release doc + regenerated evidence both committed) |
 
 ## 5. Known Limitations / Deferred Items
@@ -311,7 +311,7 @@ Legacy migration step: `mode: "migrated"`, sibling workspace migrated successful
 
 ## 6. Working Tree
 
-Both the release readiness doc (`records/2026-06-17-pi-topology-v0.5-release-readiness.md`) and the regenerated dogfood evidence (`records/2026-06-17-pi-topology-dogfood-run-smoke.md`) are committed at `b02df33 docs(pi-topology): v0.5 release readiness`. `git status --short` is clean.
+Both the release readiness doc (`records/2026-06-17-pi-topology-v0.5-release-readiness.md`) and the regenerated dogfood evidence (`records/2026-06-17-pi-topology-dogfood-run-smoke.md`) are committed at `b02df33 docs(pi-topology): v0.5 release readiness` (per the readiness evidence commit `9b46e89 fix(v0.5-readiness): ...` which is the latest fix on top of `b02df33`). `git status --short` is clean.
 
 ## 7. Next Steps
 
@@ -325,7 +325,7 @@ Both the release readiness doc (`records/2026-06-17-pi-topology-v0.5-release-rea
 | PRD | `docs/13-pi-topology-mission-runtime-prd.md` |
 | Spec | `docs/14-pi-topology-mission-runtime-spec.md` |
 | v0.6 parking lot（**不实现**） | `docs/15-pi-topology-mission-runtime-v0.6-hardening-notes.md` |
-| Latest commit | `b02df33 docs(pi-topology): v0.5 release readiness` |
+| Latest commit | `9b46e89 fix(v0.5-readiness): correct stale HEAD refs, pending-commit language, and number inconsistencies` |
 | Handoff docs | `records/2026-06-17-pi-topology-*.md` |
 | Dogfood evidence | `records/2026-06-17-pi-topology-dogfood-run-smoke.md` |
 | Package | `packages/pi-topology/package.json` |
