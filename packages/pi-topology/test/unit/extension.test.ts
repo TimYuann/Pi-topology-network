@@ -48,6 +48,7 @@ test("registers minimal Pi topology tool and command surface", () => {
       "topology_get",
       "topology_init_mission",
       "topology_list",
+      "topology_migrate",
       "topology_read_artifact",
       "topology_send",
       "topology_smoke",

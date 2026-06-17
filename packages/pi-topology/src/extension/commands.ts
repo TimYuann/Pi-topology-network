@@ -11,6 +11,13 @@ import { appendEventSync } from "../state/event-log.ts";
 import { appendSessionRecordSync } from "../state/session-ledger.ts";
 import { readFreshPeerRegistrySync } from "../transport/registry.ts";
 import { formatDashboardText, formatDashboardTextDetailed, readDashboardSnapshot } from "../runtime/dashboard.ts";
+import {
+  detectLegacyLayout,
+  formatMigrationResult,
+  isMigrationNeeded,
+  migrateLegacyToPerMission,
+  readLegacyMissionData,
+} from "../runtime/migration.ts";
 import { spawn } from "node:child_process";
 
 interface PiLike {
@@ -93,12 +100,27 @@ async function handleTopologyCommand(args: string, ctx: CommandContext, hooks: T
     case "dashboard-verbose":
       // Slice 5: per-Mission dashboard with detailed paths (spec §10).
       return renderDashboardVerbose(ctx.cwd);
+    case "migrate":
+      // Slice 6: one-shot migration from legacy layout.
+      return renderMigrationPlanOrExecute(ctx.cwd, rest.join(" ").trim());
     default:
       return initMission(ctx.cwd, trimmed, ctx, {}, hooks);
   }
 }
 
 function handleBareTopology(ctx: CommandContext, hooks: TopologyCommandHooks): Promise<string> | string {
+  // Slice 6: spec §10 says bare `/topology` output must be current-Mission-first.
+  // Three branches:
+  //   1. Per-Mission registry exists → show dashboard.
+  //   2. Legacy layout detected (no registry) → offer migration.
+  //   3. Neither → preflight (intake / no mission yet).
+  const dashboard = readDashboardSnapshot(ctx.cwd);
+  if (dashboard.has_active_mission) {
+    return formatDashboardText(dashboard);
+  }
+  if (isMigrationNeeded(ctx.cwd)) {
+    return renderMigrationPrompt(ctx.cwd);
+  }
   const state = loadTopologyState(ctx.cwd);
   if (state.mission) return resumeExistingMission(ctx.cwd, state.mission, ctx, hooks);
   const candidate = findLatestAssistantTaskCard(ctx);
@@ -108,6 +130,32 @@ function handleBareTopology(ctx: CommandContext, hooks: TopologyCommandHooks): P
     source_entry_id: candidate.entryId,
     source_excerpt: candidate.excerpt,
   }, hooks);
+}
+
+function renderMigrationPrompt(cwd: string): string {
+  // Slice 6: surface migration offer to operator.
+  const legacy = readLegacyMissionData(cwd);
+  const lines: string[] = [
+    "Topology migration available",
+    `cwd: ${cwd}`,
+    `legacy_detected: ${detectLegacyLayout(cwd)}`,
+    `mission_id: ${legacy?.mission_id ?? "(none)"}`,
+  ];
+  if (legacy) {
+    lines.push("");
+    lines.push("Files that will be migrated:");
+    lines.push(`  - mission-card.json (${legacy.files.mission_card.bytes} bytes)`);
+    const statusBoardDesc = legacy.files.status_board.exists
+      ? legacy.files.status_board.bytes + " bytes"
+      : "missing (will be created as inferred_empty)";
+    lines.push(`  - status-board.json (${statusBoardDesc})`);
+    lines.push(`  - sessions.jsonl (${legacy.files.sessions.lines} lines)`);
+    lines.push(`  - runtime-events.jsonl (${legacy.files.runtime_events.lines} lines)`);
+    lines.push(`  - incident-log.jsonl (${legacy.files.incident_log.lines} lines)`);
+  }
+  lines.push("");
+  lines.push("Run `/topology migrate` to apply. The migration is idempotent and non-destructive (legacy root files are kept as readable fallbacks).");
+  return lines.join("\n");
 }
 
 function renderPreflight(cwd: string, options: { detailed?: boolean; supervisorActive?: boolean } = {}): string {
@@ -388,6 +436,14 @@ function renderDashboard(cwd: string): string {
 function renderDashboardVerbose(cwd: string): string {
   // Slice 5: per-Mission dashboard with full paths and per-role classifications.
   return formatDashboardTextDetailed(readDashboardSnapshot(cwd));
+}
+
+function renderMigrationPlanOrExecute(cwd: string, args: string): string {
+  // Slice 6: /topology migrate [execute]
+  if (args === "execute") {
+    return formatMigrationResult(migrateLegacyToPerMission(cwd));
+  }
+  return renderMigrationPrompt(cwd);
 }
 
 function renderDoctor(cwd: string): string {

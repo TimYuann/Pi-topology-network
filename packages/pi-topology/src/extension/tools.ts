@@ -13,6 +13,12 @@ import {
   formatDashboardWidget,
   readDashboardSnapshot,
 } from "../runtime/dashboard.ts";
+import {
+  formatMigrationResult,
+  isMigrationNeeded,
+  migrateLegacyToPerMission,
+  readLegacyMissionData,
+} from "../runtime/migration.ts";
 import { appendEvent } from "../state/event-log.ts";
 import { markPacketSeen, rememberClosedPacket } from "../state/packet-memory.ts";
 import { appendSessionRecord, appendSessionRecordSync } from "../state/session-ledger.ts";
@@ -178,6 +184,51 @@ export function registerTopologyTools(pi: PiLike): void {
     async execute(_id: string, _params: unknown, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
       const snapshot = readDashboardSnapshot(ctx.cwd);
       return toolText(formatDashboardText(snapshot), snapshot);
+    },
+  });
+
+  // Slice 6: migration from legacy single-Mission layout to per-Mission
+  // directory layout (spec §12).
+  pi.registerTool({
+    name: "topology_migrate",
+    label: "Topology Migrate",
+    description: "Migrate a legacy single-Mission layout (.pi/topology/mission-card.json without mission-registry.json) to the per-Mission directory layout. Idempotent and non-destructive.",
+    promptSnippet: "Detect and migrate a legacy single-Mission layout to the per-Mission directory layout.",
+    promptGuidelines: [
+      "Use when the workspace has a root .pi/topology/mission-card.json but no mission-registry.json (spec §12.1).",
+      "Always run mode=plan first; only run mode=execute after the plan is reviewed.",
+    ],
+    parameters: {
+      type: "object",
+      properties: {
+        mode: { enum: ["plan", "execute"] },
+      },
+    },
+    async execute(_id: string, params: { mode?: "plan" | "execute" }, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
+      const mode = params.mode ?? "plan";
+      if (mode === "plan") {
+        const legacy = readLegacyMissionData(ctx.cwd);
+        const needs = isMigrationNeeded(ctx.cwd);
+        const lines: string[] = [
+          "topology migrate plan",
+          `cwd: ${ctx.cwd}`,
+          `legacy_detected: ${needs}`,
+          `mission_id: ${legacy?.mission_id ?? "(none)"}`,
+        ];
+        if (legacy) {
+          lines.push("files_to_migrate:");
+          lines.push(`  - mission-card.json (${legacy.files.mission_card.bytes} bytes)`);
+          lines.push(`  - status-board.json (${legacy.files.status_board.exists ? legacy.files.status_board.bytes + " bytes" : "missing"})`);
+          lines.push(`  - sessions.jsonl (${legacy.files.sessions.lines} lines)`);
+          lines.push(`  - runtime-events.jsonl (${legacy.files.runtime_events.lines} lines)`);
+          lines.push(`  - incident-log.jsonl (${legacy.files.incident_log.lines} lines)`);
+        }
+        lines.push("");
+        lines.push("Re-run with mode=execute to apply the migration.");
+        return toolText(lines.join("\n"), { needs, legacy });
+      }
+      const result = migrateLegacyToPerMission(ctx.cwd);
+      return toolText(formatMigrationResult(result), result);
     },
   });
 
