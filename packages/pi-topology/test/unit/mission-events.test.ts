@@ -51,6 +51,7 @@ test("appendMissionLifecycleTransition writes a single JSONL line with all spec 
   try {
     const layout = makeLayoutWithMission(ws, "dogfood", "events proof");
     const event = appendMissionLifecycleTransition(ws, layout, {
+      event_id: "evt_test_lifecycle_001",
       mission_id: layout.missionId,
       from_state: "draft",
       to_state: "running",
@@ -61,6 +62,7 @@ test("appendMissionLifecycleTransition writes a single JSONL line with all spec 
     }, new Date("2026-06-17T00:00:00.000Z"));
 
     assert.equal(event.event_type, MISSION_LIFECYCLE_TRANSITION_EVENT);
+    assert.equal(event.event_id, "evt_test_lifecycle_001");
     assert.equal(event.mission_id, layout.missionId);
     assert.equal(event.from_state, "draft");
     assert.equal(event.to_state, "running");
@@ -83,6 +85,7 @@ test("appendMissionSelected writes spec §3.3 mission_selected fields", () => {
   try {
     const layout = makeLayoutWithMission(ws, "dogfood", "select proof");
     const event = appendMissionSelected(ws, layout, {
+      event_id: "evt_test_select_001",
       mission_id: layout.missionId,
       selected_at: "2026-06-17T00:00:00.000Z",
       selected_by: "topology-supervisor",
@@ -90,8 +93,15 @@ test("appendMissionSelected writes spec §3.3 mission_selected fields", () => {
       previous_active_mission_id: "previous-001",
     }, new Date("2026-06-17T00:00:00.000Z"));
     assert.equal(event.event_type, MISSION_SELECTED_EVENT);
+    assert.equal(event.event_id, "evt_test_select_001");
     assert.equal(event.previous_active_mission_id, "previous-001");
     assert.ok(isMissionSelectedEvent(event));
+
+    // Slice 2.1 fix: event_id must appear in the JSONL line.
+    const lines = readFileSync(layout.runtimeEventsPath, "utf8").split("\n").filter(Boolean);
+    assert.equal(lines.length, 1);
+    const parsed = JSON.parse(lines[0]!);
+    assert.equal(parsed.event_id, "evt_test_select_001");
   } finally {
     rmSync(ws, { recursive: true, force: true });
   }
@@ -102,6 +112,7 @@ test("appendMissionCreated writes the new event type with initial state info", (
   try {
     const layout = makeLayoutWithMission(ws, "dogfood", "create proof");
     const event = appendMissionCreated(ws, layout, {
+      event_id: "evt_test_create_001",
       mission_id: layout.missionId,
       created_by: "owner",
       initial_lifecycle_state: "draft",
@@ -110,6 +121,7 @@ test("appendMissionCreated writes the new event type with initial state info", (
       objective: "O",
     }, new Date("2026-06-17T00:00:00.000Z"));
     assert.equal(event.event_type, MISSION_CREATED_EVENT);
+    assert.equal(event.event_id, "evt_test_create_001");
     assert.equal(event.initial_lifecycle_state, "draft");
     assert.equal(event.title, "T");
     assert.ok(isMissionCreatedEvent(event));
@@ -123,6 +135,7 @@ test("appending three events yields three JSONL lines, each parseable", () => {
   try {
     const layout = makeLayoutWithMission(ws, "dogfood", "three events");
     appendMissionCreated(ws, layout, {
+      event_id: "evt_test_three_001",
       mission_id: layout.missionId,
       created_by: "owner",
       initial_lifecycle_state: "draft",
@@ -131,6 +144,7 @@ test("appending three events yields three JSONL lines, each parseable", () => {
       objective: "O",
     });
     appendMissionSelected(ws, layout, {
+      event_id: "evt_test_three_002",
       mission_id: layout.missionId,
       selected_at: "2026-06-17T00:00:00.000Z",
       selected_by: "topology-supervisor",
@@ -138,6 +152,7 @@ test("appending three events yields three JSONL lines, each parseable", () => {
       previous_active_mission_id: null,
     });
     appendMissionLifecycleTransition(ws, layout, {
+      event_id: "evt_test_three_003",
       mission_id: layout.missionId,
       from_state: "draft",
       to_state: "running",
@@ -149,6 +164,9 @@ test("appending three events yields three JSONL lines, each parseable", () => {
     assert.equal(lines.length, 3);
     const types = lines.map((l) => JSON.parse(l).event_type);
     assert.deepEqual(types, ["mission_created", "mission_selected", "mission_lifecycle_transition"]);
+    // Each event has event_id (slice 2.1 invariant).
+    const ids = lines.map((l) => JSON.parse(l).event_id);
+    assert.deepEqual(ids, ["evt_test_three_001", "evt_test_three_002", "evt_test_three_003"]);
   } finally {
     rmSync(ws, { recursive: true, force: true });
   }

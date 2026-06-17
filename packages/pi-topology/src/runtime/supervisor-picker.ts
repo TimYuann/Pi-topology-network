@@ -212,12 +212,15 @@ export type OwnerAction =
 export function availableActionsForOption(option: MissionOption, mode: PickerMode): OwnerAction[] {
   // Inspect is always available for any non-intake option.
   if (mode === "intake") return ["create_new"];
+  // Slice 2.1 fix (spec §5.2): archived Missions are "closed for normal work,
+  // inspectable only". Return early so neither "continue" nor "resume" nor any
+  // lifecycle-changing action is offered, even if a stale active pointer still
+  // points to the archived Mission.
+  if (option.archived) return ["inspect"];
   const actions: OwnerAction[] = ["inspect"];
   if (option.is_active) actions.push("continue");
-  if (!option.is_active && !option.archived) actions.push("resume");
-  if (option.archived) {
-    // Archived Missions are inspectable but not actionable beyond inspect.
-  } else if (option.lifecycle_state === "parked") {
+  if (!option.is_active) actions.push("resume");
+  if (option.lifecycle_state === "parked") {
     actions.push("unpark");
   } else {
     actions.push("archive", "park", "mark_blocked", "request_rollback");

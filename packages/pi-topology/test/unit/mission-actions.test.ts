@@ -151,6 +151,40 @@ test("setActiveMissionFull: success path writes pointer, registry, event, root m
   }
 });
 
+test("setActiveMissionFull: pointer.event_id matches selectedEvent.event_id in JSONL (slice 2.1 traceability)", () => {
+  const ws = makeWorkspace();
+  try {
+    const { card, layout } = seedRegistryWithMission(ws, "alpha");
+    const result = setActiveMissionFull(ws, card.mission_id, {
+      reason: "owner_selected",
+      now: new Date("2026-06-17T00:00:00.000Z"),
+    });
+
+    // Returned pointer.event_id equals the returned selectedEvent.event_id.
+    assert.equal(result.pointer.event_id, result.event_id);
+    assert.ok(result.selectedEvent);
+    assert.equal(result.selectedEvent?.event_id, result.pointer.event_id);
+
+    // Persisted pointer carries the same id.
+    const onDiskPointer = readActiveMissionPointer(ws);
+    assert.equal(onDiskPointer?.event_id, result.pointer.event_id);
+
+    // The runtime-events.jsonl line for this selection carries the same id.
+    const lines = readFileSync(layout.runtimeEventsPath, "utf8").split("\n").filter(Boolean);
+    assert.equal(lines.length, 1);
+    const parsed = JSON.parse(lines[0]!);
+    assert.equal(parsed.event_id, result.pointer.event_id);
+
+    // selectedEvent matches the JSONL line byte-for-byte (apart from
+    // timestamp determinism — we built the event before write, so types
+    // and payload agree).
+    assert.equal(parsed.event_type, result.selectedEvent?.event_type);
+    assert.equal(parsed.mission_id, result.selectedEvent?.mission_id);
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
 test("setActiveMissionFull: switching active Mission updates pointer and event's previous_active_mission_id", () => {
   const ws = makeWorkspace();
   try {
@@ -194,9 +228,79 @@ test("resumeMission sets active and appends mission_selected event with reason=r
     const { card, layout } = seedRegistryWithMission(ws, "alpha");
     const result = resumeMission(ws, card.mission_id, { now: new Date("2026-06-17T00:00:00.000Z") });
     assert.equal(result.pointer.reason, "resumed");
+    // Slice 2.1 traceability: pointer.event_id equals selectedEvent.event_id.
+    assert.equal(result.pointer.event_id, result.event_id);
+    assert.equal(result.selectedEvent?.event_id, result.pointer.event_id);
     const events = readFileSync(layout.runtimeEventsPath, "utf8").split("\n").filter(Boolean);
     assert.equal(events.length, 1);
-    assert.equal(JSON.parse(events[0]!).reason, "resumed");
+    const parsed = JSON.parse(events[0]!);
+    assert.equal(parsed.reason, "resumed");
+    assert.equal(parsed.event_id, result.pointer.event_id);
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("setActiveMissionFull throws ArchivedMissionError when entry is archived (slice 2.1)", () => {
+  const ws = makeWorkspace();
+  try {
+    const { card } = seedRegistryWithMission(ws, "alpha");
+    archiveMission(ws, card.mission_id, { now: new Date("2026-06-17T00:00:00.000Z") });
+    // Archived Mission gate: even though card is still known to the registry,
+    // setActiveMissionFull refuses to flip the active pointer onto it.
+    assert.throws(
+      () => setActiveMissionFull(ws, card.mission_id, { reason: "resumed" }),
+      (err: unknown) =>
+        err instanceof Error &&
+        err.name === "ArchivedMissionError" &&
+        /archived/i.test(err.message),
+    );
+
+    // The throw happened BEFORE any write: pointer file is unchanged.
+    assert.equal(existsSync(activeMissionPointerPath(ws)), false);
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("resumeMission propagates ArchivedMissionError for archived Mission", () => {
+  const ws = makeWorkspace();
+  try {
+    const { card } = seedRegistryWithMission(ws, "alpha");
+    archiveMission(ws, card.mission_id, { now: new Date("2026-06-17T00:00:00.000Z") });
+    assert.throws(
+      () => resumeMission(ws, card.mission_id),
+      (err: unknown) =>
+        err instanceof Error && err.name === "ArchivedMissionError",
+    );
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("createMissionFlow on already-archived entry path does NOT exist (createMissionFlow throws on duplicate mission_id)", () => {
+  // Sanity: the createMissionFlow contract throws on duplicate mission_id;
+  // archive happens AFTER creation, never before. The archived gate only fires
+  // for resume/setActiveMissionFull on existing entries.
+  const ws = makeWorkspace();
+  try {
+    createMissionFlow(ws, {
+      project: "archived-gate-sanity",
+      workdir: ws,
+      objective: "first",
+      allowed_paths: [ws],
+    });
+    // The duplicate case is what createMissionFlow guards.
+    assert.throws(
+      () =>
+        createMissionFlow(ws, {
+          project: "archived-gate-sanity",
+          workdir: ws,
+          objective: "second",
+          allowed_paths: [ws],
+        }),
+      /already exists/,
+    );
   } finally {
     rmSync(ws, { recursive: true, force: true });
   }
@@ -420,7 +524,7 @@ test("updateRegistryEntry previous reflects entry BEFORE patch; updated reflects
   }
 });
 
-test("createMissionFlow then archiveMission then resumeMission chain keeps consistent registry", () => {
+test("createMissionFlow then archiveMission then resumeMission chain (slice 2.1 archived gate)", () => {
   const ws = makeWorkspace();
   try {
     const created = createMissionFlow(ws, {
@@ -431,17 +535,40 @@ test("createMissionFlow then archiveMission then resumeMission chain keeps consi
       title: "Chain",
       now: new Date("2026-06-17T00:00:00.000Z"),
     });
+    // Sanity: after createMissionFlow, pointer event_id matches the
+    // mission_selected event in JSONL (slice 2.1 traceability).
+    const createdPointer = readActiveMissionPointer(ws);
+    const eventsAfterCreate = readFileSync(created.layout.runtimeEventsPath, "utf8")
+      .split("\n").filter(Boolean);
+    assert.equal(eventsAfterCreate.length, 2); // mission_created + mission_selected
+    assert.equal(JSON.parse(eventsAfterCreate[1]!).event_id, createdPointer?.event_id);
+
+    // Archive: archive does NOT clear active_mission_id (the entry is just
+    // marked archived=true and lifecycle_state=archived).
     archiveMission(ws, created.missionCard.mission_id, { now: new Date("2026-06-17T00:01:00.000Z") });
-    // After archive, registry.active_mission_id still points to the archived Mission
-    // (archiving does not clear active). Resume is a no-op for active.
     const reg1 = readMissionRegistry(ws);
     assert.equal(reg1?.active_mission_id, created.missionCard.mission_id);
     assert.equal(reg1?.missions[0]?.archived, true);
+    // The pre-existing pointer file is left in place by archive; the archived
+    // Mission is now in a "stale active pointer" state. The slice 2.1 picker
+    // and action gate both defend against this.
 
-    // Resume on the same mission is allowed (still known to the registry).
-    resumeMission(ws, created.missionCard.mission_id, { now: new Date("2026-06-17T00:02:00.000Z") });
+    // Resume on the archived Mission must throw (slice 2.1 archived gate).
+    assert.throws(
+      () => resumeMission(ws, created.missionCard.mission_id, { now: new Date("2026-06-17T00:02:00.000Z") }),
+      (err: unknown) =>
+        err instanceof Error && err.name === "ArchivedMissionError",
+    );
+
+    // The throw happened BEFORE any registry/pointer/event write — registry
+    // state is unchanged from after the archive.
     const reg2 = readMissionRegistry(ws);
     assert.equal(reg2?.active_mission_id, created.missionCard.mission_id);
+    assert.equal(reg2?.missions[0]?.archived, true);
+    // No new mission_selected event was appended.
+    const eventsAfterResume = readFileSync(created.layout.runtimeEventsPath, "utf8")
+      .split("\n").filter(Boolean);
+    assert.equal(eventsAfterResume.length, 3); // created + selected + lifecycle_transition (from archive)
   } finally {
     rmSync(ws, { recursive: true, force: true });
   }

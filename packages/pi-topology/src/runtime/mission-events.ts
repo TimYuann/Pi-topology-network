@@ -29,9 +29,13 @@ export const MISSION_LIFECYCLE_TRANSITION_EVENT = "mission_lifecycle_transition"
 export const MISSION_SELECTED_EVENT = "mission_selected";
 export const MISSION_CREATED_EVENT = "mission_created";
 
-/** Per spec §4.1: every transition needs from_state / to_state / reason / actor / evidence. */
+/** Per spec §4.1: every transition needs from_state / to_state / reason / actor / evidence.
+ *  Slice 2.1: every mission event also carries `event_id` so that the
+ *  `active-mission.json` pointer's `event_id` field can be traced to a
+ *  concrete line in the runtime events ledger. */
 export interface MissionLifecycleTransitionEvent {
   event_type: typeof MISSION_LIFECYCLE_TRANSITION_EVENT;
+  event_id: string;
   mission_id: string;
   timestamp: string;
   from_state: MissionLifecycleState;
@@ -48,6 +52,7 @@ export interface MissionLifecycleTransitionEvent {
 
 export interface MissionSelectedEvent {
   event_type: typeof MISSION_SELECTED_EVENT;
+  event_id: string;
   mission_id: string;
   timestamp: string;
   selected_at: string;
@@ -58,6 +63,7 @@ export interface MissionSelectedEvent {
 
 export interface MissionCreatedEvent {
   event_type: typeof MISSION_CREATED_EVENT;
+  event_id: string;
   mission_id: string;
   timestamp: string;
   created_by: string;
@@ -94,11 +100,12 @@ export function appendMissionEvent(
 export function appendMissionLifecycleTransition(
   workspaceDir: string,
   layout: MissionLayoutPaths,
-  input: Omit<MissionLifecycleTransitionEvent, "event_type" | "timestamp">,
+  input: Omit<MissionLifecycleTransitionEvent, "event_type" | "event_id" | "timestamp">,
   now: Date = new Date(),
 ): MissionLifecycleTransitionEvent {
   const event: MissionLifecycleTransitionEvent = {
     event_type: MISSION_LIFECYCLE_TRANSITION_EVENT,
+    event_id: input.event_id ?? buildEventId(now),
     timestamp: now.toISOString(),
     ...input,
   };
@@ -109,11 +116,12 @@ export function appendMissionLifecycleTransition(
 export function appendMissionSelected(
   workspaceDir: string,
   layout: MissionLayoutPaths,
-  input: Omit<MissionSelectedEvent, "event_type" | "timestamp">,
+  input: Omit<MissionSelectedEvent, "event_type" | "event_id" | "timestamp">,
   now: Date = new Date(),
 ): MissionSelectedEvent {
   const event: MissionSelectedEvent = {
     event_type: MISSION_SELECTED_EVENT,
+    event_id: input.event_id ?? buildEventId(now),
     timestamp: now.toISOString(),
     ...input,
   };
@@ -124,11 +132,12 @@ export function appendMissionSelected(
 export function appendMissionCreated(
   workspaceDir: string,
   layout: MissionLayoutPaths,
-  input: Omit<MissionCreatedEvent, "event_type" | "timestamp">,
+  input: Omit<MissionCreatedEvent, "event_type" | "event_id" | "timestamp">,
   now: Date = new Date(),
 ): MissionCreatedEvent {
   const event: MissionCreatedEvent = {
     event_type: MISSION_CREATED_EVENT,
+    event_id: input.event_id ?? buildEventId(now),
     timestamp: now.toISOString(),
     ...input,
   };

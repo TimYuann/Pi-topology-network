@@ -36,6 +36,7 @@ import {
   appendMissionSelected,
   buildEventId,
   type MissionLifecycleTransitionEvent,
+  type MissionSelectedEvent,
 } from "./mission-events.ts";
 import { syncRootMirrorFromLayout } from "./root-mirror.ts";
 
@@ -76,12 +77,30 @@ export interface SetActiveMissionResult {
   pointer: ActiveMissionPointer;
   event_id: string;
   previous_active_mission_id: string | null;
+  /**
+   * The runtime event written to the Mission's runtime-events.jsonl. Undefined
+   * when the caller passed `skip_event_append: true`. The pointer's
+   * `event_id` always equals `selectedEvent?.event_id` when defined; slice 2.1
+   * enforces this invariant.
+   */
+  selectedEvent: MissionSelectedEvent | undefined;
 }
 
 /**
  * Canonical path for active pointer writes. Goes through the registry gate.
  * Throws if the registry is missing OR if the mission_id is unknown.
  */
+export class ArchivedMissionError extends Error {
+  public readonly missionId: string;
+  constructor(missionId: string) {
+    super(
+      `setActiveMissionFull: cannot activate archived mission ${JSON.stringify(missionId)}; archived Missions are inspectable only (spec §5.2)`,
+    );
+    this.name = "ArchivedMissionError";
+    this.missionId = missionId;
+  }
+}
+
 export function setActiveMissionFull(
   workspaceDir: string,
   missionId: string,
@@ -101,13 +120,26 @@ export function setActiveMissionFull(
     // Unreachable in practice: setRegistryActiveMission throws on unknown.
     throw new Error(`setActiveMissionFull: mission ${JSON.stringify(missionId)} missing after gate`);
   }
+  // Slice 2.1: archived Mission gate (spec §5.2 — "archived: closed for normal
+  // work, inspectable only"). This blocks continue/resume on archived Missions.
+  // Until an explicit unarchive action is defined, the only post-archive path
+  // is to create a new Mission or restore from a registry audit stream.
+  if (entry.archived) {
+    throw new ArchivedMissionError(missionId);
+  }
 
+  // Slice 2.1 fix: event_id is generated ONCE and threaded through both the
+  // runtime event ledger AND the active-mission.json pointer. The spec §3.3
+  // requires the pointer's event_id to be traceable to a concrete line in
+  // the Mission's runtime-events.jsonl.
   const event_id = opts.event_id ?? buildEventId(now);
   const layout = missionLayoutPaths(workspaceDir, missionId);
   const previousActiveId = registry.active_mission_id;
 
+  let selectedEvent: MissionSelectedEvent | undefined;
   if (!opts.skip_event_append && existsSync(layout.runtimeEventsPath)) {
-    appendMissionSelected(workspaceDir, layout, {
+    selectedEvent = appendMissionSelected(workspaceDir, layout, {
+      event_id,
       mission_id: missionId,
       selected_at: now.toISOString(),
       selected_by: opts.selected_by ?? "topology-supervisor",
@@ -137,6 +169,7 @@ export function setActiveMissionFull(
     pointer,
     event_id,
     previous_active_mission_id: previousActiveId,
+    selectedEvent,
   };
 }
 

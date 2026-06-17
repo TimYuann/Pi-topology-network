@@ -223,9 +223,17 @@ test("availableActionsForOption honors spec §5.3 actions", () => {
     "mark_blocked",
     "request_rollback",
   ]);
-  // Archived: inspect only.
+  // Archived: inspect only — even when the active pointer still points to it.
+  // Slice 2.1 regression: before this fix, the "is_active" branch pushed
+  // "continue" first and the archived early-return did not exist, so a stale
+  // active pointer on an archived Mission offered ["inspect", "continue"].
+  // Spec §5.2 says archived is "closed for normal work, inspectable only".
   const archived = { ...base, mission_id: "c", archived: true, is_active: false, category: "archived" as const };
   assert.deepEqual(availableActionsForOption(archived, "registry"), ["inspect"]);
+  const archivedButActive = { ...base, mission_id: "ca", archived: true, is_active: true, category: "archived" as const };
+  assert.deepEqual(availableActionsForOption(archivedButActive, "registry"), ["inspect"]);
+  const archivedButArchivedNotBlockedParked = { ...base, mission_id: "cb", archived: true, is_active: false, category: "archived" as const, lifecycle_state: "draft" as const };
+  assert.deepEqual(availableActionsForOption(archivedButArchivedNotBlockedParked, "registry"), ["inspect"]);
   // Parked: inspect + resume + unpark (resume is the soft wake; unpark is the
   // canonical wake from a parked state).
   const parked = { ...base, mission_id: "d", is_active: false, category: "parked" as const, lifecycle_state: "parked" as const };
