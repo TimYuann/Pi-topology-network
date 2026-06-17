@@ -148,10 +148,11 @@ Findings:
   - `io_exec: shell could not be detected, no automatic shell integration will be injected`
   - `surface: abnormal process exit detected, showing error message`
 - Earlier failed launches also logged `embedded_window: error initializing surface err=error.OutOfMemory` and opened `Configuration Errors` windows.
+- Ghostty's own default config documentation says `-e` sets `quit-after-last-window-closed=true` and `shell-integration=detect`; it also treats commands that exit under `abnormal-command-exit-runtime = 250` ms as abnormal on macOS. This explains why a fast `/usr/bin/touch` probe can leave marker evidence while Ghostty still opens a failed-command window.
 
 Conclusion:
 
-The generated Pi role script and launch args are not the only failing boundary. Ghostty GUI command execution on this Mac is unstable: simple commands may eventually execute, but Ghostty still shows failed-command windows and logs abnormal process exits. No package launcher change was made from this evidence because the tested alternatives (`open -F`, direct binary launch, AppleScript `new window with configuration`, document open, explicit config file, temporary config home, and reversible removal of the zero-byte config) did not prove a stable Ghostty GUI command execution path.
+The generated Pi role script and launch args are not the only failing boundary. Ghostty GUI command execution on this Mac is unstable for unattended probes: fast commands can execute, yet Ghostty still shows failed-command windows and logs abnormal process exits. No package launcher change was made from this evidence because the tested alternatives (`open -F`, direct binary launch, AppleScript `new window with configuration`, document open, explicit config file, temporary config home, and reversible removal of the zero-byte config) did not prove a stable Ghostty GUI command execution path.
 
 ## Local Environment Blockers
 
