@@ -100,7 +100,7 @@ export function appendMissionEvent(
 export function appendMissionLifecycleTransition(
   workspaceDir: string,
   layout: MissionLayoutPaths,
-  input: Omit<MissionLifecycleTransitionEvent, "event_type" | "event_id" | "timestamp">,
+  input: Omit<MissionLifecycleTransitionEvent, "event_type" | "timestamp"> & { event_id?: string },
   now: Date = new Date(),
 ): MissionLifecycleTransitionEvent {
   const event: MissionLifecycleTransitionEvent = {
@@ -116,7 +116,7 @@ export function appendMissionLifecycleTransition(
 export function appendMissionSelected(
   workspaceDir: string,
   layout: MissionLayoutPaths,
-  input: Omit<MissionSelectedEvent, "event_type" | "event_id" | "timestamp">,
+  input: Omit<MissionSelectedEvent, "event_type" | "timestamp"> & { event_id?: string },
   now: Date = new Date(),
 ): MissionSelectedEvent {
   const event: MissionSelectedEvent = {
@@ -132,7 +132,7 @@ export function appendMissionSelected(
 export function appendMissionCreated(
   workspaceDir: string,
   layout: MissionLayoutPaths,
-  input: Omit<MissionCreatedEvent, "event_type" | "event_id" | "timestamp">,
+  input: Omit<MissionCreatedEvent, "event_type" | "timestamp"> & { event_id?: string },
   now: Date = new Date(),
 ): MissionCreatedEvent {
   const event: MissionCreatedEvent = {
