@@ -91,7 +91,7 @@ Important evidence files:
 | `/topology status` / doctor command path | Partial | non-interactive stdout is sparse, but state files/events update and unit command coverage passes |
 | `skill:topology-runtime` visibility | Pass | Pi loaded skill and summarized command/tool workflow |
 | Supervisor print-mode smoke | Failed then fixed | initial `SPAWN_MODE=print` still launched; spawn-mode lock now records `mode=print`, `launch_requested=false` |
-| HQ launch request | Pass | `spawn_result mode=launch launch_requested=true` |
+| HQ launch command evidence | Pass with repair | launch-mode artifacts now record `launch_command_issued=true`; this is explicitly not proof that Ghostty executed the role or that the role is alive |
 | HQ role script | Pass | direct `hq.sh` execution wrote log, session/status/runtime evidence, and `alive_confirmed` |
 | Direct generated HQ script lane | Pass | `/tmp/pi-topology-direct-e2e-20260617-085218` generated `hq.sh` in print mode, verified MiniMax lock, then direct execution recorded `alive_confirmed`, `session_alive`, status-board `hq.alive=true`, and a fresh HQ -> runner `STATUS` packet |
 | Ghostty GUI execution via `open --args -e` | Blocked by terminal layer | marker evidence is inconsistent: `/usr/bin/touch` markers were eventually created, but Ghostty still showed failed-command windows and logged abnormal process exits |
@@ -125,6 +125,11 @@ Important evidence files:
    - Evidence: `evaluateToolCall` blocked `ls /tmp 2>/dev/null`, `find ... 2>/dev/null`, `rg ... 2>/dev/null`, and `cat ... 2>/dev/null`.
    - Fix: shell-write detector ignores redirects to `/dev/null`, while preserving real write detection.
    - Test: `read-only shell commands may silence stderr to /dev/null`.
+
+5. Launch-mode evidence over-relied on `launch_requested`.
+   - Evidence: local Ghostty probes could create marker files while still showing failed-command windows and abnormal-process logs, so issuing `open -n -a Ghostty --args -e <script>` is not proof of role execution.
+   - Fix: launch-mode session records, runtime events, and status-board evidence now add `launch_command_issued=true` / `type:"launch_command_issued"` and inference text saying alive proof still requires `alive_confirmed`, `session_alive`, dashboard heartbeat, or registry evidence. Existing `launch_requested` peer state remains for UI compatibility.
+   - Tests: `topology_spawn_role honors spawn mode lock over caller requested launch`, `topology spawn hq launches a visible HQ peer session from supervisor`, and `HQ launch clears owner gate and records owner approval`.
 
 ## Additional Ghostty Launch Diagnostics
 
@@ -229,6 +234,15 @@ Evidence:
 - Later status/skill inspections correctly marked the exited HQ and runner probe sessions stale, so final board staleness is expected and is not a contradiction of the immediate `session_alive` evidence.
 - `/topology status` in non-interactive `pi -p` still produced sparse terminal-control output only. The command handler returns text and emits command text, so this remains an operator-facing Pi CLI rendering risk rather than evidence for a topology state bug.
 - No matching direct-run Pi/HQ process remained after final inspection; the only matches were the inspection commands themselves.
+
+Fresh launch-evidence repair proof:
+
+- Run root: `/tmp/pi-topology-launch-evidence-20260617-091107`
+- Command: `SPAWN_MODE=print packages/pi-topology/scripts/ghostty-supervisor-smoke.sh`
+- `runtime-events.jsonl` recorded `spawn_result` for `hq` with `mode:"print"`, `launch_requested:false`, and `launch_command_issued:false`.
+- `sessions.jsonl` recorded the `launch_printed` HQ row with `launch_command_issued:false`, provider `minimax-cn`, model `MiniMax-M3`, thinking `low`.
+- Generated `hq.sh` retained the MiniMax lock: `--provider minimax-cn --model MiniMax-M3 --thinking low`.
+- This lane did not open Ghostty.
 
 ## Commands Run
 

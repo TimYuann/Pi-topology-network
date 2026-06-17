@@ -268,6 +268,7 @@ export function registerTopologyTools(pi: PiLike): void {
         session_id: null,
         script_path: scriptPath,
         launch_command: `open -n -a '${params.terminal_app ?? "Ghostty"}' --args -e '${scriptPath}'`,
+        launch_command_issued: mode === "launch",
         log_path: safeLogPath,
         terminal_app: params.terminal_app ?? "Ghostty",
         provider: DEFAULT_ROLE_PROVIDER,
@@ -275,8 +276,12 @@ export function registerTopologyTools(pi: PiLike): void {
         thinking: DEFAULT_ROLE_THINKING,
         evidence: {
           transport: [scriptPath, loaded.sessionLedgerPath],
-          business: [`${params.role} ${mode === "launch" ? "launch requested" : "launch command printed"}`],
-          inference: ["session_id remains null until the role session confirms itself"],
+          business: [`${params.role} ${mode === "launch" ? "launch command issued" : "launch command printed"}`],
+          inference: [
+            mode === "launch"
+              ? "launch_command_issued means the terminal open command was issued; session_id remains null until the role session confirms itself"
+              : "session_id remains null until the role session confirms itself",
+          ],
         },
       });
       if (mode === "launch") {
@@ -308,13 +313,20 @@ export function registerTopologyTools(pi: PiLike): void {
         role: params.role,
         mode,
         launch_requested: launchRequested,
+        launch_command_issued: launchRequested,
         script_path: scriptPath,
         log_path: safeLogPath,
-        evidence: { transport: [scriptPath], business: [params.role], inference: [] },
+        evidence: {
+          transport: [scriptPath],
+          business: [params.role],
+          inference: launchRequested
+            ? ["launch_command_issued is not proof that the terminal executed the role or that the role is alive"]
+            : [],
+        },
       });
       return toolText(
         launchRequested
-          ? `launch requested for ${params.role} via ${scriptPath}\nVerify the new Pi session before marking the role alive.`
+          ? `launch command issued for ${params.role} via ${scriptPath}\nVerify alive_confirmed/session_alive evidence before marking the role live.`
           : [
             `launch plan prepared for ${params.role}; not launched.`,
             `script_path: ${scriptPath}`,
@@ -326,6 +338,7 @@ export function registerTopologyTools(pi: PiLike): void {
           role: params.role,
           mode,
           launch_requested: launchRequested,
+          launch_command_issued: launchRequested,
           scriptPath,
           log_path: safeLogPath,
           terminal_app: params.terminal_app ?? "Ghostty",

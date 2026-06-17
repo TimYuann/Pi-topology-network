@@ -858,15 +858,17 @@ test("topology_spawn_role honors spawn mode lock over caller requested launch", 
     const events = (await readFile(join(cwd, ".pi/topology/runtime-events.jsonl"), "utf8"))
       .trim()
       .split("\n")
-      .map((line) => JSON.parse(line) as { event_type: string; mode?: string; launch_requested?: boolean });
+      .map((line) => JSON.parse(line) as { event_type: string; mode?: string; launch_requested?: boolean; launch_command_issued?: boolean });
     const spawnRequest = events.find((event) => event.event_type === "spawn_request");
     const spawnResult = events.find((event) => event.event_type === "spawn_result");
     assert.match(printed.content[0].text, /launch plan prepared for hq; not launched/);
     assert.equal(printed.details.mode, "print");
     assert.equal(printed.details.launch_requested, false);
+    assert.equal(printed.details.launch_command_issued, false);
     assert.equal(spawnRequest?.mode, "print");
     assert.equal(spawnResult?.mode, "print");
     assert.equal(spawnResult?.launch_requested, false);
+    assert.equal(spawnResult?.launch_command_issued, false);
   } finally {
     restoreEnv("PI_TOPOLOGY_SPAWN_MODE_LOCK", previousLock);
   }
@@ -1765,12 +1767,15 @@ test("topology spawn hq launches a visible HQ peer session from supervisor", asy
     },
   });
 
-  assert.match(result, /launch requested for hq/);
-  assert.match(result, /Wait for the dashboard\/registry heartbeat to confirm the role becomes live/);
+  assert.match(result, /launch command issued for hq/);
+  assert.match(result, /Wait for alive_confirmed\/session_alive evidence or the dashboard\/registry heartbeat before treating the role as live/);
   const nextBoard = JSON.parse(await readFile(statusPath, "utf8"));
   assert.equal(nextBoard.peer_status.hq.state, "launch_requested");
   const sessions = (await readFile(join(cwd, ".pi/topology/sessions.jsonl"), "utf8")).trim().split("\n");
   assert.equal(sessions.some((line) => /"role":"hq"/.test(line) && /"state":"launch_requested"/.test(line)), true);
+  assert.equal(sessions.some((line) => /"role":"hq"/.test(line) && /"launch_command_issued":true/.test(line)), true);
+  const events = (await readFile(join(cwd, ".pi/topology/runtime-events.jsonl"), "utf8")).trim().split("\n");
+  assert.equal(events.some((line) => /"event_type":"spawn_result"/.test(line) && /"launch_command_issued":true/.test(line)), true);
   restoreEnv("PI_COMS_DIR", previousComsDir);
 });
 

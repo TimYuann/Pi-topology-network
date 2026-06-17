@@ -16,6 +16,7 @@ export interface SessionLedgerRecord {
   session_id: string | null;
   script_path: string;
   launch_command?: string;
+  launch_command_issued?: boolean;
   log_path?: string;
   terminal_app?: string;
   provider?: string;

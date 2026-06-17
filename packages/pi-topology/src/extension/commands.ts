@@ -470,6 +470,7 @@ async function launchRoleFromSupervisor(
     session_id: null,
     script_path: scriptPath,
     launch_command: `open -n -a 'Ghostty' --args -e '${scriptPath}'`,
+    launch_command_issued: true,
     log_path: safeLogPath,
     terminal_app: "Ghostty",
     provider: "minimax-cn",
@@ -477,8 +478,10 @@ async function launchRoleFromSupervisor(
     thinking: "low",
     evidence: {
       transport: [scriptPath, state.sessionLedgerPath],
-      business: [`${role} launch requested from /topology spawn ${role}`],
-      inference: ["session_id remains null until the new role session proves alive via registry/heartbeat"],
+      business: [`${role} launch command issued from /topology spawn ${role}`],
+      inference: [
+        "launch_command_issued means the terminal open command was issued; session_id remains null until the new role session proves alive via registry/heartbeat",
+      ],
     },
   });
   const nextBoard = markRoleLaunchRequested(state.board ?? createInitialStatusBoard(state.mission), state.mission, {
@@ -508,17 +511,22 @@ async function launchRoleFromSupervisor(
     role,
     mode: "launch",
     launch_requested: true,
+    launch_command_issued: true,
     script_path: scriptPath,
     log_path: safeLogPath,
-    evidence: { transport: [scriptPath], business: [role], inference: [] },
+    evidence: {
+      transport: [scriptPath],
+      business: [role],
+      inference: ["launch_command_issued is not proof that the terminal executed the role or that the role is alive"],
+    },
   });
   return [
     `Topology spawn ${role}`,
     "",
-    `launch requested for ${role}`,
+    `launch command issued for ${role}`,
     `script_path: ${scriptPath}`,
     `log_path: ${safeLogPath}`,
-    "Wait for the dashboard/registry heartbeat to confirm the role becomes live.",
+    "Wait for alive_confirmed/session_alive evidence or the dashboard/registry heartbeat before treating the role as live.",
   ].join("\n");
 }
 

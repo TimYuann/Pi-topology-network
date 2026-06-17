@@ -24,6 +24,11 @@ test("HQ launch clears owner gate and records owner approval", () => {
   assert.equal(next.owner_decisions.length, 1);
   assert.equal(next.peer_status.hq.state, "launch_requested");
   assert.equal(next.active_workers.some((worker) => worker.role === "hq"), true);
+  assert.equal(next.evidence_index.transport.some((entry) => {
+    return typeof entry === "object" && entry !== null
+      && (entry as { type?: string; role?: string }).type === "launch_command_issued"
+      && (entry as { type?: string; role?: string }).role === "hq";
+  }), true);
   assert.equal(updatedMission.progress.status, "running");
   assert.equal(updatedMission.progress.pending_steps.includes("spawn_hq_after_owner_gate"), false);
 });

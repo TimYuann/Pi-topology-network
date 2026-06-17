@@ -54,7 +54,7 @@ export function markRoleLaunchRequested(board: StatusBoard, mission: MissionCard
     next.next_gate = {
       type: "none",
       owner_required: false,
-      reason: "Mission approved; HQ launch requested.",
+      reason: "Mission approved; HQ launch command issued.",
       created_at: now,
     };
     next.owner_decisions = [
@@ -91,10 +91,11 @@ export function markRoleLaunchRequested(board: StatusBoard, mission: MissionCard
   next.evidence_index.transport = [
     ...next.evidence_index.transport,
     {
-      type: "launch_requested",
+      type: "launch_command_issued",
       role: params.role,
       script_path: params.scriptPath,
       at: now,
+      inference: "not proof that the terminal executed the role or that the role is alive",
     },
   ];
   next.allowed_paths = [...mission.allowed_paths];
@@ -201,7 +202,7 @@ export function markMissionProgressForHqLaunch(mission: MissionCard, now = new D
       ...mission.progress,
       status: "running",
       percent: Math.max(mission.progress.percent, 15),
-      current_step: "Owner approved mission; HQ launch requested.",
+      current_step: "Owner approved mission; HQ launch command issued; waiting for alive confirmation.",
       completed_steps: unique([...mission.progress.completed_steps, "owner_confirm_mission", "start_topology_supervisor", "spawn_hq_after_owner_gate"]),
       pending_steps: mission.progress.pending_steps.filter((step) => !["owner_confirm_mission", "start_topology_supervisor", "spawn_hq_after_owner_gate"].includes(step)),
       updated_at: now,
