@@ -115,5 +115,5 @@ Use only with explicit mission-level scope; do not delete runtime DB/cache durin
 
 - Package tool registration is present in current package code and unit assertions.
 - `pi install .` and real multi-session MiniMax M3 + Ghostty smoke are verified in local artifacts.
-- `launch_requested` is terminal-open evidence only. On the current Mac, direct generated script execution plus registry/runtime/log evidence is the preferred E2E proof until the Ghostty GUI probe is stable.
+- `launch_requested` is terminal-open evidence only. On the current Mac, direct generated script execution plus session/status/runtime/log/packet evidence is the preferred E2E proof until the Ghostty GUI probe is stable.
 - HTTP/SSE transport and Package Hub publication remain outside the verified local scope.

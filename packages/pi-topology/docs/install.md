@@ -95,7 +95,7 @@ pi install .
 - 2026-06-17 当前 Mac 环境补充：
   - `launch_requested` 只表示终端 app 被请求打开脚本，不是 role alive 证据。
   - 本机 `open -n -a Ghostty --args -e ...` 会出现 failed-command window / abnormal-process log；简单 `touch` marker 可能延迟出现，但该 GUI lane 不能作为当前 E2E gate。
-  - 当前本地验收使用 direct generated script lane：先检查 `hq.sh` 的 MiniMax lock，再在当前 terminal 直接执行脚本并用 registry/runtime/log 证明 `alive_confirmed`。
+  - 当前本地验收使用 direct generated script lane：先检查 `hq.sh` 的 MiniMax lock，再在当前 terminal 直接执行脚本并用 sessions/status/runtime/log/packet 证据证明 `alive_confirmed`。
 - 如需不出站本地验证，可使用 `PI_OFFLINE=1`；这只证明本地 Pi 工具和状态面，不证明第三方 provider 下的 Ghostty role dogfood。
 - smoke scripts 默认不再在 Ghostty 中等待 Enter；需要保留窗口时设置 `PI_TOPOLOGY_WAIT_ON_EXIT=1`。
 - 建议先在临时目录跑最小任务，确认：

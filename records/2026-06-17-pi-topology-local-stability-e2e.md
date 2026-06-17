@@ -55,6 +55,7 @@ Findings:
 - Ghostty smoke root with initial print failure: `/tmp/pi-topology-ghostty-e2e-20260617-014757`
 - Ghostty/read postfix root: `/tmp/pi-topology-ghostty-e2e-postfix-20260617-015100`
 - Restarted-read postfix root: `/tmp/pi-topology-read-e2e-20260617-015900`
+- Direct generated script E2E root: `/tmp/pi-topology-direct-e2e-20260617-085218`
 - Ghostty terminal-layer debug roots:
   - `/tmp/pi-topology-ghostty-debug-20260617-020528`
   - `/tmp/pi-topology-ghostty-postcleanup-20260617-021000`
@@ -73,6 +74,11 @@ Important evidence files:
 - `/tmp/pi-topology-ghostty-e2e-postfix-20260617-015100/logs/supervisor-smoke.log`
 - `/tmp/pi-topology-ghostty-e2e-postfix-20260617-015100/logs/hq-spawned.log`
 - `/tmp/pi-topology-read-e2e-20260617-015900/workdir/.pi/topology/runtime-events.jsonl`
+- `/tmp/pi-topology-direct-e2e-20260617-085218/workdir/.pi/topology/launch/hq.sh`
+- `/tmp/pi-topology-direct-e2e-20260617-085218/workdir/.pi/topology/sessions.jsonl`
+- `/tmp/pi-topology-direct-e2e-20260617-085218/workdir/.pi/topology/runtime-events.jsonl`
+- `/tmp/pi-topology-direct-e2e-20260617-085218/workdir/.pi/topology/status-board.json`
+- `/tmp/pi-topology-direct-e2e-20260617-085218/logs/hq-direct-terminal.log`
 
 ## Pass/Fail Table
 
@@ -86,7 +92,8 @@ Important evidence files:
 | `skill:topology-runtime` visibility | Pass | Pi loaded skill and summarized command/tool workflow |
 | Supervisor print-mode smoke | Failed then fixed | initial `SPAWN_MODE=print` still launched; spawn-mode lock now records `mode=print`, `launch_requested=false` |
 | HQ launch request | Pass | `spawn_result mode=launch launch_requested=true` |
-| HQ role script | Pass | direct `hq.sh` execution wrote log, registry, and `alive_confirmed` |
+| HQ role script | Pass | direct `hq.sh` execution wrote log, session/status/runtime evidence, and `alive_confirmed` |
+| Direct generated HQ script lane | Pass | `/tmp/pi-topology-direct-e2e-20260617-085218` generated `hq.sh` in print mode, verified MiniMax lock, then direct execution recorded `alive_confirmed`, `session_alive`, status-board `hq.alive=true`, and a fresh HQ -> runner `STATUS` packet |
 | Ghostty GUI execution via `open --args -e` | Blocked by terminal layer | marker evidence is inconsistent: `/usr/bin/touch` markers were eventually created, but Ghostty still showed failed-command windows and logged abnormal process exits |
 | MiniMax lock | Pass | launch scripts and session ledger use `minimax-cn` / `MiniMax-M3` / `low`; no Anthropic/Claude strings found in relevant launch evidence |
 | Current mission packet filtering | Pass | default list filters by mission; include-history behavior covered by tests |
@@ -165,8 +172,23 @@ Until a minimal Ghostty GUI command probe is stable on this Mac, do not use unat
 
 - `topology_spawn_role(mode=print)` generates the role script.
 - Generated `hq.sh` contains the MiniMax lock: `--provider minimax-cn --model MiniMax-M3 --thinking low`.
-- Direct execution of generated `hq.sh` in the current terminal is acceptable transport evidence.
+- Direct execution of generated `hq.sh` in the current terminal is acceptable transport evidence when durable runtime/session/status/log or packet artifacts prove role startup.
 - Ghostty GUI launch remains an environment compatibility target until `open -n -a Ghostty --args -e /usr/bin/touch /tmp/probe` runs without failed-command windows or abnormal-process logs.
+
+Fresh direct-lane proof:
+
+- Run root: `/tmp/pi-topology-direct-e2e-20260617-085218`
+- Supervisor smoke command ran with `SPAWN_MODE=print`, provider `minimax-cn`, model `MiniMax-M3`, thinking `low`.
+- `runtime-events.jsonl` recorded `spawn_result` for `hq` with `mode:"print"` and `launch_requested:false`.
+- `hq.sh` contains `--provider minimax-cn --model MiniMax-M3 --thinking low`; no `anthropic`, `claude`, or `sonnet` strings were found in the script/session evidence.
+- Direct execution of `hq.sh` in the current terminal wrote:
+  - `sessions.jsonl`: `state:"alive_confirmed"`, `role:"hq"`, `session_id:"hq-24126-1781657590269"`, provider `minimax-cn`, model `MiniMax-M3`
+  - `runtime-events.jsonl`: `event_type:"session_alive"` for the same HQ session
+  - `status-board.json`: `peer_status.hq.state:"alive"`, `alive:true`, `context_used_pct:1`
+  - `logs/hq-direct-terminal.log`: HQ lifecycle receipt and boundary discipline notes
+  - `outbox.jsonl` / `runner-inbox.jsonl`: fresh HQ -> runner `STATUS` packet `pkt_29d0a117-9c2c-4862-90e3-3ce6b63e8677`
+- No role process remained after the direct script finished.
+- The live registry file was not present at final inspection after process exit, so this run treats session ledger, status board, runtime event, terminal log, and packet evidence as the durable proof set.
 
 ## Commands Run
 
@@ -178,6 +200,8 @@ Representative commands:
 - `pi --help`
 - `SPAWN_MODE=print packages/pi-topology/scripts/ghostty-supervisor-smoke.sh`
 - `SPAWN_MODE=launch packages/pi-topology/scripts/ghostty-supervisor-smoke.sh`
+- `SPAWN_MODE=print packages/pi-topology/scripts/ghostty-supervisor-smoke.sh`
+- `/tmp/pi-topology-direct-e2e-20260617-085218/workdir/.pi/topology/launch/hq.sh`
 - `pi -e packages/pi-topology/index.ts ... -p "/topology Verify bare startup..."`
 - `pi -e packages/pi-topology/index.ts ... -p "/skill:topology-runtime"`
 - `pi -e packages/pi-topology/index.ts ... -p "Use tools only. Call topology_list..."`
@@ -212,4 +236,4 @@ Do not implement multi mission-card selection yet. Proposed behavior:
 
 ## Readiness
 
-`packages/pi-topology` is closer to a real custom WMS closeout run and passes local smoke. It is ready for a supervised local pilot using direct generated role scripts as the E2E launch lane. It is not yet ready to use unattended Ghostty GUI spawning as the gate on this Mac until the local Ghostty command probe is stable and free of failed-command windows/abnormal-process logs.
+`packages/pi-topology` is closer to a real custom WMS closeout run and passes local smoke. It is ready for a supervised local pilot using direct generated role scripts as the E2E launch lane; `/tmp/pi-topology-direct-e2e-20260617-085218` proves that lane for HQ with MiniMax lock and durable alive evidence. It is not yet ready to use unattended Ghostty GUI spawning as the gate on this Mac until the local Ghostty command probe is stable and free of failed-command windows/abnormal-process logs.
