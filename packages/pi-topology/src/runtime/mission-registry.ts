@@ -175,6 +175,102 @@ export function listMissionIds(registry: MissionRegistry): string[] {
   return registry.missions.map((m) => m.mission_id);
 }
 
+export interface UpdateRegistryEntryPatch {
+  title?: string;
+  objective?: string;
+  lifecycle_state?: MissionLifecycleState;
+  progress_status?: MissionLegacyProgressStatus;
+  owner_gate?: OwnerGateState;
+  blocked?: boolean;
+  archived?: boolean;
+  closeout_path?: string | null;
+}
+
+export interface UpdateRegistryEntryInput {
+  mission_id: string;
+  patch: UpdateRegistryEntryPatch;
+  now?: Date;
+}
+
+export interface UpdateRegistryEntryResult {
+  registry: MissionRegistry;
+  entry: MissionRegistryEntry;
+  updated: boolean;
+  previous: MissionRegistryEntry;
+}
+
+export class UnknownMissionRegistryEntryError extends Error {
+  public readonly missionId: string;
+  constructor(missionId: string) {
+    super(`unknown mission registry entry: ${JSON.stringify(missionId)}`);
+    this.name = "UnknownMissionRegistryEntryError";
+    this.missionId = missionId;
+  }
+}
+
+const UPDATABLE_FIELDS: readonly (keyof UpdateRegistryEntryPatch)[] = [
+  "title",
+  "objective",
+  "lifecycle_state",
+  "progress_status",
+  "owner_gate",
+  "blocked",
+  "archived",
+  "closeout_path",
+];
+
+/**
+ * Apply a partial update to a registry entry. Pure: returns a new registry.
+ * `previous` always reflects the entry state BEFORE the patch, even when no
+ * fields actually changed (so callers can detect no-op updates).
+ *
+ * role_summary / pending_packet_count / incident_count / last_updated_at are
+ * NOT patchable here — they are derived views updated by their owners
+ * (session registry for role_summary, inbox cleanup for pending count,
+ * incident log for incident count). Use those code paths instead.
+ */
+export function updateRegistryEntry(
+  registry: MissionRegistry,
+  input: UpdateRegistryEntryInput,
+): UpdateRegistryEntryResult {
+  const idx = registry.missions.findIndex((m) => m.mission_id === input.mission_id);
+  if (idx < 0) throw new UnknownMissionRegistryEntryError(input.mission_id);
+  const previous = registry.missions[idx]!;
+  const now = (input.now ?? new Date()).toISOString();
+  const next: MissionRegistryEntry = {
+    ...previous,
+    ...input.patch,
+    last_updated_at: now,
+  };
+  const nextRegistry: MissionRegistry = {
+    ...registry,
+    updated_at: now,
+    missions: [
+      ...registry.missions.slice(0, idx),
+      next,
+      ...registry.missions.slice(idx + 1),
+    ],
+  };
+  let updated = false;
+  for (const field of UPDATABLE_FIELDS) {
+    if (input.patch[field] !== undefined && (input.patch as Record<string, unknown>)[field] !== (previous as Record<string, unknown>)[field]) {
+      updated = true;
+      break;
+    }
+  }
+  return { registry: nextRegistry, entry: next, updated, previous };
+}
+
+/** Convenience: set a single entry's lifecycle_state. */
+export function setRegistryEntryLifecycle(
+  registry: MissionRegistry,
+  missionId: string,
+  lifecycle_state: MissionLifecycleState,
+  now: Date = new Date(),
+): UpdateRegistryEntryResult {
+  return updateRegistryEntry(registry, { mission_id: missionId, patch: { lifecycle_state }, now });
+}
+
 export function setRegistryActiveMission(
   registry: MissionRegistry,
   missionId: string | null,
