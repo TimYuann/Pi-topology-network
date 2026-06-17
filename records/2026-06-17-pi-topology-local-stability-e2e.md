@@ -191,6 +191,45 @@ Fresh direct-lane proof:
 - No role process remained after the direct script finished.
 - The live registry file was not present at final inspection after process exit, so this run treats session ledger, status board, runtime event, terminal log, and packet evidence as the durable proof set.
 
+### Fresh Continuation Evidence
+
+Run root: `/tmp/pi-topology-cli-e2e-20260617-090208`
+
+Commands:
+
+- `cd packages/pi-topology && npm run smoke`
+- `pi --version`
+- `pi list`
+- `SPAWN_MODE=print packages/pi-topology/scripts/ghostty-supervisor-smoke.sh`
+- `/tmp/pi-topology-cli-e2e-20260617-090208/workdir/.pi/topology/launch/hq.sh`
+- direct Pi runner read probe with repeated `topology_list` and `topology_get`
+- `pi -e packages/pi-topology/index.ts ... -p "/topology status"`
+- `pi -e packages/pi-topology/index.ts ... -p "/skill:topology-runtime"`
+
+Evidence:
+
+- `pi --version` -> `0.79.4`
+- `pi list` showed the local package path:
+  `/Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology`
+- Package version: `pi-topology-network@0.1.0`
+- `npm run smoke` passed after the Ghostty/rg blocker record correction: 80 tests, typecheck, and `npm pack --dry-run`.
+- Print-mode supervisor smoke generated `/tmp/pi-topology-cli-e2e-20260617-090208/workdir/.pi/topology/launch/hq.sh` and recorded `spawn_result` with `mode:"print"` and `launch_requested:false`.
+- `hq.sh` contains `--provider minimax-cn --model MiniMax-M3 --thinking low`.
+- No `anthropic`, `claude`, or `sonnet` strings were found in the fresh launch/session evidence.
+- Direct execution of generated `hq.sh` in the current terminal wrote:
+  - `sessions.jsonl`: `state:"alive_confirmed"`, `role:"hq"`, `session_id:"hq-48513-1781658185996"`, provider `minimax-cn`, model `MiniMax-M3`
+  - `runtime-events.jsonl`: `event_type:"session_alive"` for the same HQ session
+  - immediate post-run `status-board.json`: `peer_status.hq.state:"alive"`, `alive:true`, `context_used_pct:1`
+  - `logs/hq-spawned.log`: direct terminal launch marker
+  - `outbox.jsonl` / `runner-inbox.jsonl`: fresh HQ -> runner `STATUS` packet `pkt_c4c98905-e052-41c4-bd6b-92eafe683ec9`
+- A direct Pi runner read probe called `topology_list` twice and `topology_get` twice for packet `pkt_117a796e-d9f6-477b-b41c-b7afd1ae4ffc`. `runtime-events.jsonl` ended with exactly two `packet_received` rows for the two runner packets, one per packet:
+  - `pkt_117a796e-d9f6-477b-b41c-b7afd1ae4ffc`: 1
+  - `pkt_c4c98905-e052-41c4-bd6b-92eafe683ec9`: 1
+- `/skill:topology-runtime` loaded and reported the mission, peer state, owner gate, and Ghostty caveat.
+- Later status/skill inspections correctly marked the exited HQ and runner probe sessions stale, so final board staleness is expected and is not a contradiction of the immediate `session_alive` evidence.
+- `/topology status` in non-interactive `pi -p` still produced sparse terminal-control output only. The command handler returns text and emits command text, so this remains an operator-facing Pi CLI rendering risk rather than evidence for a topology state bug.
+- No matching direct-run Pi/HQ process remained after final inspection; the only matches were the inspection commands themselves.
+
 ## Commands Run
 
 Representative commands:
