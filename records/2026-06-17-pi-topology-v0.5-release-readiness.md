@@ -4,7 +4,7 @@
 项目：OMP拓扑网络 / `packages/pi-topology`
 版本：v0.5
 状态：✅ Ready for Reviewer approval
-HEAD：`d45f5af docs(pi-topology): mark v0.5 contract and park v0.6 hardening notes`
+HEAD：`b02df33 docs(pi-topology): v0.5 release readiness`
 范围：`docs/13` PRD v0.5 + `docs/14` Spec v0.5
 **不实现**：`docs/15` v0.6 hardening notes（不是 PRD/Spec，也不是 v0.5 release blocker）
 
@@ -79,7 +79,7 @@ aaa884f fix(slice-6.1): close two migration audit / entry-stability gaps
 56abd2f fix(slice-7.2): close the remaining pi-stub-* leak in createPiStubDir
 ```
 
-### 2.2 Handoff docs（19 个）
+### 2.2 Handoff docs（22 个）
 
 ```
 records/2026-06-17-pi-topology-mission-runtime-prd-review.md
@@ -275,12 +275,12 @@ Legacy migration step: `mode: "migrated"`, sibling workspace migrated successful
 
 | 项 | 值 |
 |---|---|
-| Local master HEAD | `d45f5af docs(pi-topology): mark v0.5 contract and park v0.6 hardening notes` |
-| 总 commit 数 | 54 |
+| Local master HEAD | `b02df33 docs(pi-topology): v0.5 release readiness` |
+| 总 commit 数 | 55 |
 | Slice 主 commit 数 | 7 |
 | Slice hotfix commit 数 | 11 |
-| Handoff doc commit 数 | ~12 |
-| Working tree | clean (except regenerated dogfood evidence file, see below) |
+| Handoff doc commit 数 | ~13 |
+| Working tree | clean (release doc + regenerated evidence both committed) |
 
 ## 5. Known Limitations / Deferred Items
 
@@ -309,15 +309,14 @@ Legacy migration step: `mode: "migrated"`, sibling workspace migrated successful
 - `missions/<id>/closeout.json` 写入 helper
 - 真实 Pi session 的 E2E 启动（dogfood 用 stub 替代，避免在 agent context 中开真实 session 风险）
 
-## 6. Files Pending Commit
+## 6. Working Tree
 
-`records/2026-06-17-pi-topology-dogfood-run-smoke.md` 是最新一次 dogfood run 重新生成的（时间戳已更新）。本次 release readiness 验证会包含这个 regenerated evidence 文件。
+Both the release readiness doc (`records/2026-06-17-pi-topology-v0.5-release-readiness.md`) and the regenerated dogfood evidence (`records/2026-06-17-pi-topology-dogfood-run-smoke.md`) are committed at `b02df33 docs(pi-topology): v0.5 release readiness`. `git status --short` is clean.
 
 ## 7. Next Steps
 
-1. **本 release readiness doc + regenerated evidence** → local commit（**不 push**）
-2. Codex Reviewer 复审
-3. 如放行：进入 release readiness 后续步骤（CHANGELOG / release notes / npm publish per spec §9.1）
+1. Codex Reviewer 复审
+2. 如放行：进入 release readiness 后续步骤（CHANGELOG / release notes / npm publish per spec §9.1）
 
 ## 8. Quick Reference
 
@@ -326,7 +325,7 @@ Legacy migration step: `mode: "migrated"`, sibling workspace migrated successful
 | PRD | `docs/13-pi-topology-mission-runtime-prd.md` |
 | Spec | `docs/14-pi-topology-mission-runtime-spec.md` |
 | v0.6 parking lot（**不实现**） | `docs/15-pi-topology-mission-runtime-v0.6-hardening-notes.md` |
-| Latest commit | `d45f5af docs(pi-topology): mark v0.5 contract and park v0.6 hardening notes` |
+| Latest commit | `b02df33 docs(pi-topology): v0.5 release readiness` |
 | Handoff docs | `records/2026-06-17-pi-topology-*.md` |
 | Dogfood evidence | `records/2026-06-17-pi-topology-dogfood-run-smoke.md` |
 | Package | `packages/pi-topology/package.json` |
@@ -336,7 +335,7 @@ Legacy migration step: `mode: "migrated"`, sibling workspace migrated successful
 ## 9. 实施者立场
 
 v0.5 已完成 readiness 验证：
-- 全部 7 slice + 5 hotfix patches 完成（12 commits since slice 1）
+- 全部 7 slice + 11 hotfix patches 完成（18 feature commits since slice 1）
 - 297 unit tests + 1 integration test 全部 pass
 - Dogfood 1/1 pass + 10 + 3 字段 evidence 完整
 - **0 残留**（Node tmpdir + /tmp 都验证）
