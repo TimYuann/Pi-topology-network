@@ -14,6 +14,7 @@ import {
   getActivePacketsForMission,
   getAllActivePacketsForMission,
   getPacketLedgerEntries,
+  isActionableForRecipient,
   isPacketStale,
   PACKET_STATES,
   PACKET_TYPES,
@@ -475,14 +476,118 @@ test("getActivePacketsForMission: full filter (mission + role + state + type) in
     appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_closed", to: "hq", type: "REPORT", state: "closed" }));
     // 4. Right role, but stale → excluded
     appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_stale", to: "hq", type: "REPORT", state: "stale" }));
-    // 5. Right role + right type, but not actionable for hq (STATUS is actionable for hq though; use REQUEST for runner instead)
-    // hq actionable: REPORT, ACK, INCIDENT, VERDICT, REQUEST, STATUS — all 6.
-    // We need a packet to hq with a type NOT actionable. Use a hypothetical non-OMP type? Not in our spec.
-    // Skip this case; covered by the test above with the custom override.
 
     const active = getActivePacketsForMission(ws, card.mission_id, "hq", { now });
     assert.equal(active.length, 1);
     assert.equal(active[0]?.packet_id, "pkt_match");
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("isActionableForRecipient: STATUS → librarian is NOT actionable (slice 4.1)", () => {
+  const e = entry({ mission_id: "m", to: "librarian", type: "STATUS" });
+  assert.equal(isActionableForRecipient(e), false);
+  assert.equal(
+    isActionableForRecipient(e, defaultActionableTypesForRole),
+    false,
+  );
+});
+
+test("isActionableForRecipient: STATUS → scott IS actionable (slice 4.1)", () => {
+  const e = entry({ mission_id: "m", to: "scott", type: "STATUS" });
+  assert.equal(isActionableForRecipient(e), true);
+});
+
+test("isActionableForRecipient: INCIDENT → repair is NOT actionable (repair doesn't see INCIDENT)", () => {
+  // repair actionable: REQUEST / ACK / VERDICT. INCIDENT not in set.
+  const e = entry({ mission_id: "m", to: "repair", type: "INCIDENT" });
+  assert.equal(isActionableForRecipient(e), false);
+});
+
+test("isActionableForRecipient: REQUEST → repair IS actionable (REQUEST is repair's type)", () => {
+  const e = entry({ mission_id: "m", to: "repair", type: "REQUEST" });
+  assert.equal(isActionableForRecipient(e), true);
+});
+
+test("getAllActivePacketsForMission: STATUS → librarian excluded (slice 4.1 leak fix)", () => {
+  const ws = makeWorkspace();
+  try {
+    const { card, layout } = makeMission(ws, "dogfood", "all-active-leak");
+    const now = new Date("2026-06-17T00:00:00.000Z");
+    appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_status_to_librarian", to: "librarian", type: "STATUS", last_seen_at: now.toISOString() }));
+    appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_report_to_librarian", to: "librarian", type: "REPORT", last_seen_at: now.toISOString() }));
+    appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_status_to_scott", to: "scott", type: "STATUS", last_seen_at: now.toISOString() }));
+
+    const all = getAllActivePacketsForMission(ws, card.mission_id, { now });
+    // Excluded: STATUS → librarian (not actionable)
+    // Included: REPORT → librarian, STATUS → scott
+    assert.equal(all.length, 2);
+    const ids = all.map((p) => p.packet_id).sort();
+    assert.deepEqual(ids, ["pkt_report_to_librarian", "pkt_status_to_scott"]);
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("populatePendingPacketCountForMission: STATUS → librarian does NOT inflate count (slice 4.1)", () => {
+  const ws = makeWorkspace();
+  try {
+    const { card, layout } = makeMission(ws, "dogfood", "pending-count-leak");
+    const now = new Date("2026-06-17T00:00:00.000Z");
+    // Not actionable for librarian: STATUS
+    appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_status_l", to: "librarian", type: "STATUS", last_seen_at: now.toISOString() }));
+    // Actionable for librarian: REPORT
+    appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_report_l", to: "librarian", type: "REPORT", last_seen_at: now.toISOString() }));
+    // Actionable for scott: STATUS
+    appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_status_s", to: "scott", type: "STATUS", last_seen_at: now.toISOString() }));
+
+    const result = populatePendingPacketCountForMission(ws, card.mission_id, now);
+    // 2 actionable: pkt_report_l + pkt_status_s
+    // NOT counted: pkt_status_l (librarian doesn't act on STATUS)
+    assert.equal(result?.pending_packet_count, 2);
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("populatePendingPacketCountForMission: terminal/stale excluded as before, plus actionable check", () => {
+  const ws = makeWorkspace();
+  try {
+    const { card, layout } = makeMission(ws, "dogfood", "count-mix-actionable");
+    const now = new Date("2026-06-17T00:00:00.000Z");
+    // Active + actionable → count
+    appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_1", state: "delivered", to: "topology-supervisor", type: "REPORT", last_seen_at: now.toISOString() }));
+    // Active + actionable → count
+    appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_2", state: "acknowledged", to: "topology-supervisor", type: "REPORT", last_seen_at: now.toISOString() }));
+    // Active + NOT actionable (librarian/STATUS) → NOT count
+    appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_3_actionable_check", state: "in_progress", to: "librarian", type: "STATUS", last_seen_at: now.toISOString() }));
+    // Terminal → not count
+    appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_4", state: "closed", to: "topology-supervisor", type: "REPORT", last_seen_at: now.toISOString() }));
+    // Stale-by-freshness → stale_count
+    appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_5", state: "delivered", to: "topology-supervisor", type: "REPORT", last_seen_at: "2026-06-16T00:00:00.000Z" }));
+
+    const result = populatePendingPacketCountForMission(ws, card.mission_id, now);
+    assert.equal(result?.pending_packet_count, 2); // pkt_1 + pkt_2 (pkt_3 is not actionable)
+    assert.equal(result?.active_count, 2);
+    assert.equal(result?.stale_count, 1); // pkt_5
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("populatePendingPacketCountForMission: actionableTypesForRole override is honored (slice 4.1)", () => {
+  const ws = makeWorkspace();
+  try {
+    const { card, layout } = makeMission(ws, "dogfood", "override-honor");
+    const now = new Date("2026-06-17T00:00:00.000Z");
+    appendPacketLedger(ws, layout, entry({ mission_id: card.mission_id, packet_id: "pkt_x", to: "topology-supervisor", type: "STATUS", last_seen_at: now.toISOString() }));
+    // Default: supervisor sees STATUS → count = 1.
+    let result = populatePendingPacketCountForMission(ws, card.mission_id, now);
+    assert.equal(result?.pending_packet_count, 1);
+    // Override: supervisor's actionable types excludes STATUS → count = 0.
+    result = populatePendingPacketCountForMission(ws, card.mission_id, now, DEFAULT_STALE_THRESHOLD_MS, () => new Set<PacketType>(["REPORT"]));
+    assert.equal(result?.pending_packet_count, 0);
   } finally {
     rmSync(ws, { recursive: true, force: true });
   }

@@ -145,6 +145,21 @@ export function defaultActionableTypesForRole(role: TopologyRole): ReadonlySet<P
   }
 }
 
+/**
+ * Slice 4.1 fix: a packet is "actionable for its recipient" iff the recipient
+ * role's default (or override) actionable-type set contains the packet's type.
+ * This is the SAME check used by single-role `getActivePacketsForMission`,
+ * multi-role `getAllActivePacketsForMission`, and the registry
+ * `pending_packet_count` derivation — so a packet that a single role would
+ * NOT see cannot inflate the dashboard's pending count.
+ */
+export function isActionableForRecipient(
+  entry: PacketLedgerEntry,
+  actionableTypesForRole: (role: TopologyRole) => ReadonlySet<PacketType> = defaultActionableTypesForRole,
+): boolean {
+  return actionableTypesForRole(entry.to).has(entry.type);
+}
+
 // ---------------------------------------------------------------------------
 // Read / write
 // ---------------------------------------------------------------------------
@@ -249,7 +264,8 @@ export interface ActivePacketsFilterOptions {
  *   1. `packet.mission_id === missionId`
  *   2. `packet.to === role`
  *   3. effective liveness ∈ ACTIVE_READ_STATES (re-classifies stale)
- *   4. `packet.type` is in the role's actionable-type set
+ *   4. `packet.type` is in the role's actionable-type set (via
+ *      `isActionableForRecipient`)
  */
 export function getActivePacketsForMission(
   workspaceDir: string,
@@ -260,20 +276,22 @@ export function getActivePacketsForMission(
   const all = getPacketLedgerEntries(workspaceDir, missionId);
   const actionable =
     options.actionableTypesForRole ?? defaultActionableTypesForRole;
-  const roleActionable = actionable(role);
   const threshold = options.staleThresholdMs ?? DEFAULT_STALE_THRESHOLD_MS;
   return all.filter((e) => {
     if (e.mission_id !== missionId) return false;
     if (e.to !== role) return false;
     if (!ACTIVE_READ_STATES.has(classifyPacketLiveness(e, options.now, threshold))) return false;
-    if (!roleActionable.has(e.type)) return false;
+    if (!isActionableForRecipient(e, actionable)) return false;
     return true;
   });
 }
 
 /**
- * All active packets across the Mission (any recipient, any actionable role).
- * Used for dashboard counts and `pending_packet_count` derivation.
+ * All active packets across the Mission whose recipient role would treat
+ * them as actionable. Used for dashboard counts and `pending_packet_count`
+ * derivation. A STATUS → librarian packet is excluded (librarian's
+ * actionable types don't include STATUS) so the registry count matches
+ * what a per-role read would see if the librarian queried.
  */
 export function getAllActivePacketsForMission(
   workspaceDir: string,
@@ -281,10 +299,14 @@ export function getAllActivePacketsForMission(
   options: ActivePacketsFilterOptions,
 ): PacketLedgerEntry[] {
   const all = getPacketLedgerEntries(workspaceDir, missionId);
+  const actionable =
+    options.actionableTypesForRole ?? defaultActionableTypesForRole;
   const threshold = options.staleThresholdMs ?? DEFAULT_STALE_THRESHOLD_MS;
   return all.filter((e) => {
     if (e.mission_id !== missionId) return false;
-    return ACTIVE_READ_STATES.has(classifyPacketLiveness(e, options.now, threshold));
+    if (!ACTIVE_READ_STATES.has(classifyPacketLiveness(e, options.now, threshold))) return false;
+    if (!isActionableForRecipient(e, actionable)) return false;
+    return true;
   });
 }
 
@@ -336,6 +358,7 @@ export function populatePendingPacketCountForMission(
   missionId: string,
   now: Date = new Date(),
   staleThresholdMs: number = DEFAULT_STALE_THRESHOLD_MS,
+  actionableTypesForRole: (role: TopologyRole) => ReadonlySet<PacketType> = defaultActionableTypesForRole,
 ): PopulatePendingPacketCountResult | null {
   const registry = readMissionRegistry(workspaceDir);
   if (!registry) return null;
@@ -349,7 +372,7 @@ export function populatePendingPacketCountForMission(
     const liveness = classifyPacketLiveness(e, now, staleThresholdMs);
     if (liveness === "stale") {
       staleCount += 1;
-    } else if (ACTIVE_READ_STATES.has(liveness)) {
+    } else if (ACTIVE_READ_STATES.has(liveness) && isActionableForRecipient(e, actionableTypesForRole)) {
       activeCount += 1;
     }
   }
