@@ -7,6 +7,7 @@ import { missionPathForWorkspace } from "../runtime/mission-path.ts";
 import { activePendingPackets, reconcileBoardWithLiveRegistry, reconcileBoardWithSessionRecords } from "../runtime/status-board.ts";
 import { buildRoleLaunchPlan, writeMissionLaunchScriptsSync, writeRoleLaunchScript } from "../runtime/spawn.ts";
 import { markMissionProgressForHqLaunch, markRoleLaunchRequested } from "../runtime/status-board.ts";
+import { missionLayoutPaths, type MissionLayoutPaths } from "../runtime/mission-layout.ts";
 import { appendEventSync } from "../state/event-log.ts";
 import { appendSessionRecordSync } from "../state/session-ledger.ts";
 import { readFreshPeerRegistrySync } from "../transport/registry.ts";
@@ -109,13 +110,17 @@ async function handleTopologyCommand(args: string, ctx: CommandContext, hooks: T
 }
 
 function handleBareTopology(ctx: CommandContext, hooks: TopologyCommandHooks): Promise<string> | string {
-  // Slice 6: spec §10 says bare `/topology` output must be current-Mission-first.
+  // Slice 6: load order is current-Mission-first, but bare `/topology`
+  // remains the operator action that resumes/activates Supervisor. Use
+  // `/topology status` or `/topology dashboard` for read-only status views.
   // Three branches:
-  //   1. Per-Mission registry exists → show dashboard.
+  //   1. Per-Mission registry exists → resume active Mission as Supervisor.
   //   2. Legacy layout detected (no registry) → offer migration.
   //   3. Neither → preflight (intake / no mission yet).
   const dashboard = readDashboardSnapshot(ctx.cwd);
   if (dashboard.has_active_mission) {
+    const mission = dashboard.active_mission_id ? loadActiveMissionForResume(ctx.cwd, dashboard.active_mission_id) : null;
+    if (mission) return resumeExistingMission(ctx.cwd, mission, ctx, hooks);
     return formatDashboardText(dashboard);
   }
   if (isMigrationNeeded(ctx.cwd)) {
@@ -156,6 +161,23 @@ function renderMigrationPrompt(cwd: string): string {
   lines.push("");
   lines.push("Run `/topology migrate` to apply. Use `/topology migrate plan` to show this plan again. The migration is idempotent and non-destructive (legacy root files are kept as readable fallbacks).");
   return lines.join("\n");
+}
+
+function loadActiveMissionForResume(cwd: string, missionId: string): MissionCard | null {
+  const layout = missionLayoutPaths(cwd, missionId);
+  const mission = readJson<MissionCard>(layout.missionCardPath);
+  if (!mission) return null;
+  return canonicalizeMissionRuntimePaths(normalizeMissionCard(mission).mission, layout);
+}
+
+function canonicalizeMissionRuntimePaths(mission: MissionCard, layout: MissionLayoutPaths): MissionCard {
+  return {
+    ...mission,
+    status_board_path: path.join(layout.missionDirRelative, "status-board.json"),
+    incident_log_path: path.join(layout.missionDirRelative, "incident-log.jsonl"),
+    event_log_path: path.join(layout.missionDirRelative, "runtime-events.jsonl"),
+    session_ledger_path: path.join(layout.missionDirRelative, "sessions.jsonl"),
+  };
 }
 
 function renderStatus(cwd: string, options: { supervisorActive?: boolean } = {}): string {

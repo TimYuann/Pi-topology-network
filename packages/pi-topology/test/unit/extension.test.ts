@@ -562,13 +562,16 @@ test("topology status migrates old mission cards before validation", async () =>
 });
 
 test("topology migrate applies legacy migration while migrate plan stays read-only", async () => {
-  const commands: Record<string, { handler: (args: string, ctx: { cwd: string }) => Promise<string> }> = {};
+  const commands: Record<string, { handler: (args: string, ctx: { cwd: string; ui?: unknown; getContextUsage?: () => { percent: number } }) => Promise<string> }> = {};
+  const sentMessages: Array<{ message: { customType: string; content: string }; options?: Record<string, unknown> }> = [];
   const pi = {
     registerTool() {},
-    registerCommand(name: string, command: { handler: (args: string, ctx: { cwd: string }) => Promise<string> }) {
+    registerCommand(name: string, command: { handler: (args: string, ctx: { cwd: string; ui?: unknown; getContextUsage?: () => { percent: number } }) => Promise<string> }) {
       commands[name] = command;
     },
-    sendMessage() {},
+    sendMessage(message: { customType: string; content: string }, options?: Record<string, unknown>) {
+      sentMessages.push({ message, options });
+    },
     on() {},
     registerFlag() {},
     getFlag() {
@@ -616,6 +619,39 @@ test("topology migrate applies legacy migration while migrate plan stays read-on
   const statusAlias = await commands["topology-status"].handler("", { cwd });
   assert.doesNotMatch(statusAlias, /Topology preflight/);
   assert.match(statusAlias, /mission_dir:/);
+
+  const resumed = await commands.topology.handler("", {
+    cwd,
+    getContextUsage() {
+      return { percent: 11 };
+    },
+    ui: {
+      setStatus() {},
+      setWidget() {},
+      requestRender() {},
+    },
+  });
+  assert.match(resumed, /resumed existing mission/);
+  assert.match(resumed, /current session is now topology-supervisor/);
+  assert.equal(sentMessages.some(({ message, options }) => (
+    message.customType === "topology-supervisor-bootstrap"
+    && /You are now topology-supervisor/.test(message.content)
+    && options?.deliverAs === "followUp"
+    && options?.triggerTurn === true
+  )), true);
+  const perMissionSessions = (await readFile(join(cwd, ".pi/topology/missions", mission.mission_id, "sessions.jsonl"), "utf8"))
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { role?: string; state?: string; session_id?: string });
+  assert.equal(perMissionSessions.some((entry) => (
+    entry.role === "topology-supervisor"
+    && entry.state === "alive_confirmed"
+    && typeof entry.session_id === "string"
+  )), true);
+  const perMissionBoard = JSON.parse(await readFile(join(cwd, ".pi/topology/missions", mission.mission_id, "status-board.json"), "utf8"));
+  assert.equal(perMissionBoard.peer_status["topology-supervisor"].alive, true);
+  assert.equal(perMissionBoard.peer_status["topology-supervisor"].context_used_pct, 11);
 });
 
 test("topology status refreshes existing launch scripts without duplicating session ledger", async () => {
