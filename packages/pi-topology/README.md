@@ -22,6 +22,7 @@
 
 详细架构、文件职责、启动流程、角色 prompt 注入、硬/软限制边界见：
 
+- [`docs/usage-guide.md`](docs/usage-guide.md)
 - [`docs/architecture.md`](docs/architecture.md)
 
 ## MVP 工具（`topology_*`）
@@ -132,6 +133,7 @@ Mission card 必须包含 `progress` 字段，用作跨 session 继承锚点：
 
 ## 下一步（可直接执行）
 
-1. 先用 `install.md` 搭建本地可用路径。
-2. 按 `dogfood.md` 在一个小项目执行一轮 mission + status + cleanup。
-3. 按 `package-hub-readiness.md` 补齐未验证项后再做发布。
+1. 先读 `usage-guide.md`，按真实使用流程建立一个小 Mission。
+2. 用 `install.md` 搭建或刷新本地可用路径。
+3. 按 `dogfood.md` 在一个小项目执行一轮 mission + status + cleanup。
+4. 按 `package-hub-readiness.md` 补齐未验证项后再做发布。
