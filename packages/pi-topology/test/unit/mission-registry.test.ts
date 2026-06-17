@@ -516,6 +516,31 @@ test("validateMissionRegistry rejects active_mission_id that does not match any 
   assert.match(result.errors.join("\n"), /active_mission_id "ghost-mission" not found/);
 });
 
+test("validateMissionRegistry rejects active_mission_id when missions[] is empty (slice 1.2 boundary fix)", () => {
+  // Regression: previous guard was `&& r.missions.length > 0`, which let a
+  // { active_mission_id: "ghost", missions: [] } registry pass validation.
+  // The static gate must catch this so a corrupt on-disk registry cannot be
+  // trusted as the source of truth.
+  const reg = {
+    version: 1,
+    active_mission_id: "ghost",
+    updated_at: "2026-06-17T00:00:00.000Z",
+    missions: [],
+  };
+  const result = validateMissionRegistry(reg);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /active_mission_id "ghost" not found in missions\[\]/);
+  // Also: a truly empty registry (active_mission_id: null) must still pass.
+  const empty = {
+    version: 1,
+    active_mission_id: null,
+    updated_at: "2026-06-17T00:00:00.000Z",
+    missions: [],
+  };
+  const emptyResult = validateMissionRegistry(empty);
+  assert.equal(emptyResult.ok, true);
+});
+
 test("validateMissionIdPathSegment rejects path-traversal and unsafe characters", () => {
   for (const bad of [
     "",

@@ -230,7 +230,9 @@ export function validateMissionRegistry(input: unknown): { ok: boolean; errors: 
       }
     }
     // active_mission_id consistency: if set, must reference an existing mission.
-    if (typeof r.active_mission_id === "string" && r.missions.length > 0) {
+    // Catches BOTH the "ghost id in non-empty missions[]" case AND the
+    // "non-null active_mission_id with empty missions[]" case (slice 1.2 fix).
+    if (typeof r.active_mission_id === "string") {
       const ids = r.missions.map((m) => (m as MissionRegistryEntry).mission_id);
       if (!ids.includes(r.active_mission_id)) {
         errors.push(`active_mission_id "${r.active_mission_id}" not found in missions[]`);
