@@ -7,6 +7,12 @@ import { missionPathForWorkspace } from "../runtime/mission-path.ts";
 import { createPacket, type PacketType } from "../runtime/packet.ts";
 import { buildRoleLaunchPlan, writeMissionLaunchScripts, writeMissionLaunchScriptsSync, writeRoleLaunchScript } from "../runtime/spawn.ts";
 import { activePendingPackets, applyPacketLifecycle, markMissionProgressForHqLaunch, markRoleLaunchRequested, reconcileBoardWithLiveRegistry, reconcileBoardWithSessionRecords } from "../runtime/status-board.ts";
+import {
+  formatDashboardText,
+  formatDashboardTextDetailed,
+  formatDashboardWidget,
+  readDashboardSnapshot,
+} from "../runtime/dashboard.ts";
 import { appendEvent } from "../state/event-log.ts";
 import { markPacketSeen, rememberClosedPacket } from "../state/packet-memory.ts";
 import { appendSessionRecord, appendSessionRecordSync } from "../state/session-ledger.ts";
@@ -152,6 +158,60 @@ export function registerTopologyTools(pi: PiLike): void {
         ].join("\n"),
         loaded,
       );
+    },
+  });
+
+  // Slice 5: per-Mission dashboard (spec §10). Compact, current-Mission-first.
+  // Distinct from the legacy `topology_status` tool which still reads the
+  // root mission-card.json. Use this for owner-facing summaries across
+  // multi-Mission workspaces.
+  pi.registerTool({
+    name: "topology_dashboard",
+    label: "Topology Dashboard",
+    description: "Read the per-Mission dashboard snapshot for the active Mission (spec §10).",
+    promptSnippet: "Read the active Mission dashboard: id, lifecycle, owner gate, next action, role counts, pending packets, incidents, closeout.",
+    promptGuidelines: [
+      "Use for owner-facing summaries of the current Mission.",
+      "Prefer this over the legacy topology_status tool when the workspace has migrated to per-Mission layout.",
+    ],
+    parameters: { type: "object", properties: {} },
+    async execute(_id: string, _params: unknown, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
+      const snapshot = readDashboardSnapshot(ctx.cwd);
+      return toolText(formatDashboardText(snapshot), snapshot);
+    },
+  });
+
+  // Slice 5: per-Mission dashboard with detailed paths (spec §10 "/topology status must show detailed paths").
+  pi.registerTool({
+    name: "topology_dashboard_verbose",
+    label: "Topology Dashboard Verbose",
+    description: "Read the per-Mission dashboard snapshot for the active Mission, including all per-Mission file paths and per-role classifications.",
+    promptSnippet: "Read the active Mission dashboard with full paths and per-role classifications.",
+    promptGuidelines: [
+      "Use when the owner asks for detailed Mission state or path information.",
+    ],
+    parameters: { type: "object", properties: {} },
+    async execute(_id: string, _params: unknown, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
+      const snapshot = readDashboardSnapshot(ctx.cwd);
+      return toolText(formatDashboardTextDetailed(snapshot), snapshot);
+    },
+  });
+
+  // Slice 5: dashboard widget for `ctx.ui.setStatus` / `ctx.ui.setWidget`.
+  // Returns structured entries (not text) so the UI layer can format freely.
+  pi.registerTool({
+    name: "topology_dashboard_widget",
+    label: "Topology Dashboard Widget",
+    description: "Read the per-Mission dashboard snapshot as structured widget entries (spec §10 + §11).",
+    promptSnippet: "Read the active Mission dashboard as a structured widget for UI status/footer rendering.",
+    promptGuidelines: [
+      "Use when rendering compact status/widget for the active Mission.",
+    ],
+    parameters: { type: "object", properties: {} },
+    async execute(_id: string, _params: unknown, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
+      const snapshot = readDashboardSnapshot(ctx.cwd);
+      const widget = formatDashboardWidget(snapshot);
+      return toolText(JSON.stringify(widget, null, 2), { snapshot, widget });
     },
   });
 

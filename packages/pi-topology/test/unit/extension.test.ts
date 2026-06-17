@@ -39,8 +39,11 @@ test("registers minimal Pi topology tool and command surface", () => {
   assert.deepEqual(
     tools.map((tool) => tool.name).sort(),
     [
-      "topology_cleanup",
       "topology_await",
+      "topology_cleanup",
+      "topology_dashboard",
+      "topology_dashboard_verbose",
+      "topology_dashboard_widget",
       "topology_doctor",
       "topology_get",
       "topology_init_mission",

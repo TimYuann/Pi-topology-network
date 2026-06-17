@@ -10,6 +10,7 @@ import { markMissionProgressForHqLaunch, markRoleLaunchRequested } from "../runt
 import { appendEventSync } from "../state/event-log.ts";
 import { appendSessionRecordSync } from "../state/session-ledger.ts";
 import { readFreshPeerRegistrySync } from "../transport/registry.ts";
+import { formatDashboardText, formatDashboardTextDetailed, readDashboardSnapshot } from "../runtime/dashboard.ts";
 import { spawn } from "node:child_process";
 
 interface PiLike {
@@ -86,6 +87,12 @@ async function handleTopologyCommand(args: string, ctx: CommandContext, hooks: T
       return initMission(ctx.cwd, rest.join(" ").trim(), ctx, {}, hooks);
     case "spawn":
       return handleSpawnCommand(ctx.cwd, rest[0] ?? "hq", ctx, hooks);
+    case "dashboard":
+      // Slice 5: per-Mission dashboard (spec §10), compact.
+      return renderDashboard(ctx.cwd);
+    case "dashboard-verbose":
+      // Slice 5: per-Mission dashboard with detailed paths (spec §10).
+      return renderDashboardVerbose(ctx.cwd);
     default:
       return initMission(ctx.cwd, trimmed, ctx, {}, hooks);
   }
@@ -371,6 +378,16 @@ async function resumeExistingMission(cwd: string, mission: MissionCard, ctx: Com
     `mission_card: ${missionPathFor(cwd)}`,
     `session_ledger: ${path.join(cwd, mission.session_ledger_path ?? ".pi/topology/sessions.jsonl")}`,
   ].join("\n");
+}
+
+function renderDashboard(cwd: string): string {
+  // Slice 5: per-Mission dashboard (spec §10) — compact, current-Mission-first.
+  return formatDashboardText(readDashboardSnapshot(cwd));
+}
+
+function renderDashboardVerbose(cwd: string): string {
+  // Slice 5: per-Mission dashboard with full paths and per-role classifications.
+  return formatDashboardTextDetailed(readDashboardSnapshot(cwd));
 }
 
 function renderDoctor(cwd: string): string {
