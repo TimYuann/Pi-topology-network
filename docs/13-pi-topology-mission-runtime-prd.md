@@ -2,7 +2,9 @@
 
 Date: 2026-06-17
 Project: OMP拓扑网络 / `packages/pi-topology`
-Status: reviewer draft; M3 PRD review incorporated
+Version: 0.5
+Status: accepted implementation contract; M3 PRD review incorporated
+Implementation scope: v0.5 Mission Runtime normalization. Earlier 0.1-0.4 work established the local Pi topology package, launch scripts, role prompts, packet tools, and dogfood stability; v0.5 formalizes the Mission-oriented runtime contract and implementation roadmap.
 
 ## 1. Purpose
 
