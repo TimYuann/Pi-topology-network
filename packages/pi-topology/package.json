@@ -23,6 +23,8 @@
   ],
   "scripts": {
     "test": "node --experimental-strip-types --test test/unit/*.test.ts",
+    "test:integration": "node --experimental-strip-types --test test/integration/*.test.ts",
+    "dogfood": "node --experimental-strip-types --test test/integration/dogfood.test.ts",
     "typecheck": "node --experimental-strip-types -e \"await import('./index.ts'); console.log('strip-types import ok')\"",
     "guard-smoke": "node --experimental-strip-types scripts/guard-smoke.mjs",
     "smoke": "npm run test && npm run typecheck && npm_config_cache=/tmp/pi-topology-npm-cache npm pack --dry-run"
