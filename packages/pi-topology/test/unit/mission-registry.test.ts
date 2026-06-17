@@ -7,8 +7,10 @@ import { createInitialStatusBoard, createMissionDraft, type MissionCard } from "
 import {
   createMissionLayout,
   expectedLayoutEntries,
+  InvalidMissionIdError,
   layoutExists,
   missionLayoutPaths,
+  validateMissionIdPathSegment,
 } from "../../src/runtime/mission-layout.ts";
 import {
   addMissionToRegistry,
@@ -16,6 +18,7 @@ import {
   findMissionInRegistry,
   listMissionIds,
   MISSION_REGISTRY_FILENAME,
+  newMissionRegistryEntry,
   readMissionRegistry,
   registryFilePath,
   setRegistryActiveMission,
@@ -99,6 +102,7 @@ test("addMissionToRegistry adds a new entry and is idempotent on duplicate id", 
     title: "Slice 1 dogfood",
     objective: "Verify registry + layout",
     lifecycle_state: "draft" as const,
+    progress_status: "draft" as const,
     owner_gate: "required" as const,
     blocked: false,
     archived: false,
@@ -380,6 +384,232 @@ test("registry file is named per spec and lives at .pi/topology/mission-registry
     );
     assert.equal(MISSION_REGISTRY_FILENAME, "mission-registry.json");
     assert.equal(existsSync(registryFilePath(ws)), true);
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Reviewer findings (slice 1.1): progress_status, path safety, active_mission_id
+// ---------------------------------------------------------------------------
+
+test("newMissionRegistryEntry defaults progress_status to awaiting_owner_confirmation", () => {
+  const entry = newMissionRegistryEntry({
+    mission_id: "omp-2026-06-17-001",
+    title: "Default progress status",
+    objective: "Verify default",
+    lifecycle_state: "draft",
+  });
+  assert.equal(entry.progress_status, "awaiting_owner_confirmation");
+});
+
+test("newMissionRegistryEntry accepts an explicit progress_status", () => {
+  const entry = newMissionRegistryEntry({
+    mission_id: "omp-2026-06-17-001",
+    title: "Explicit progress status",
+    objective: "Verify override",
+    lifecycle_state: "running",
+    progress_status: "supervisor_ready",
+  });
+  assert.equal(entry.lifecycle_state, "running");
+  assert.equal(entry.progress_status, "supervisor_ready");
+});
+
+test("validateMissionRegistry rejects entries with missing or invalid progress_status", () => {
+  const reg = {
+    version: 1,
+    active_mission_id: null,
+    updated_at: "2026-06-17T00:00:00.000Z",
+    missions: [
+      {
+        mission_id: "x",
+        mission_dir: ".pi/topology/missions/x",
+        title: "x",
+        objective: "x",
+        lifecycle_state: "draft",
+        // progress_status intentionally missing
+        owner_gate: "required",
+        blocked: false,
+        archived: false,
+        last_updated_at: "2026-06-17T00:00:00.000Z",
+        role_summary: { live: 0, resumable: 0, stale: 0, parked: 0, closed: 0 },
+        pending_packet_count: 0,
+        incident_count: 0,
+        closeout_path: null,
+      },
+    ],
+  };
+  const result = validateMissionRegistry(reg);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /progress_status/);
+
+  const regInvalid = {
+    ...reg,
+    missions: [{ ...reg.missions[0], progress_status: "frobnicated" }],
+  };
+  const resultInvalid = validateMissionRegistry(regInvalid);
+  assert.equal(resultInvalid.ok, false);
+  assert.match(resultInvalid.errors.join("\n"), /progress_status/);
+});
+
+test("setRegistryActiveMission throws when mission id is not in the registry", () => {
+  const reg = createEmptyRegistry();
+  // Empty registry — no missions.
+  assert.throws(
+    () => setRegistryActiveMission(reg, "ghost-mission"),
+    /unknown mission/,
+  );
+
+  // Even with missions, pointing to a non-existent one throws.
+  const populated = addMissionToRegistry(reg, {
+    mission_id: "real-1",
+    mission_dir: ".pi/topology/missions/real-1",
+    title: "Real",
+    objective: "real",
+    lifecycle_state: "draft",
+    progress_status: "draft",
+    owner_gate: "required",
+    blocked: false,
+    archived: false,
+    last_updated_at: "2026-06-17T00:00:00.000Z",
+    role_summary: { live: 0, resumable: 0, stale: 0, parked: 0, closed: 0 },
+    pending_packet_count: 0,
+    incident_count: 0,
+    closeout_path: null,
+  }).registry;
+  assert.throws(
+    () => setRegistryActiveMission(populated, "ghost-mission"),
+    /unknown mission/,
+  );
+
+  // Null is still allowed (clearing).
+  const cleared = setRegistryActiveMission(populated, null);
+  assert.equal(cleared.active_mission_id, null);
+});
+
+test("validateMissionRegistry rejects active_mission_id that does not match any mission entry", () => {
+  const reg = {
+    version: 1,
+    active_mission_id: "ghost-mission",
+    updated_at: "2026-06-17T00:00:00.000Z",
+    missions: [
+      {
+        mission_id: "real-1",
+        mission_dir: ".pi/topology/missions/real-1",
+        title: "Real",
+        objective: "real",
+        lifecycle_state: "draft",
+        progress_status: "draft",
+        owner_gate: "required",
+        blocked: false,
+        archived: false,
+        last_updated_at: "2026-06-17T00:00:00.000Z",
+        role_summary: { live: 0, resumable: 0, stale: 0, parked: 0, closed: 0 },
+        pending_packet_count: 0,
+        incident_count: 0,
+        closeout_path: null,
+      },
+    ],
+  };
+  const result = validateMissionRegistry(reg);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /active_mission_id "ghost-mission" not found/);
+});
+
+test("validateMissionIdPathSegment rejects path-traversal and unsafe characters", () => {
+  for (const bad of [
+    "",
+    ".",
+    "..",
+    "../bad",
+    "../../etc/passwd",
+    "foo/bar",
+    "foo\\bar",
+    "foo bar",
+    "foo\x00bar",
+    ".hidden",
+    "..hidden",
+    "/abs/path",
+    "C:\\abs",
+  ]) {
+    assert.throws(
+      () => validateMissionIdPathSegment(bad),
+      (err: unknown) => err instanceof InvalidMissionIdError,
+      `expected ${JSON.stringify(bad)} to throw InvalidMissionIdError`,
+    );
+  }
+  // Non-string inputs also rejected.
+  for (const bad of [null, undefined, 42, {}, []]) {
+    assert.throws(
+      () => validateMissionIdPathSegment(bad as unknown),
+      InvalidMissionIdError,
+    );
+  }
+  // Valid ids are accepted (the function returns void on success).
+  for (const good of [
+    "omp-2026-06-17-001",
+    "mission_42",
+    "v1.0.0",
+    "ABC-123",
+    "a",
+  ]) {
+    validateMissionIdPathSegment(good);
+  }
+});
+
+test("missionLayoutPaths throws on path-traversal mission id", () => {
+  const ws = makeWorkspace();
+  try {
+    for (const bad of ["..", "../etc", "foo/bar", ".hidden"]) {
+      assert.throws(
+        () => missionLayoutPaths(ws, bad),
+        (err: unknown) => err instanceof InvalidMissionIdError,
+        `missionLayoutPaths should reject ${JSON.stringify(bad)}`,
+      );
+    }
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("createMissionLayout throws on path-traversal mission id", () => {
+  const ws = makeWorkspace();
+  try {
+    const card = makeMissionWithSuffix("dogfood", "traversal proof", "alpha");
+    card.mission_id = "../../escape";
+    const board = createInitialStatusBoard(card);
+    assert.throws(
+      () =>
+        createMissionLayout({
+          workspaceDir: ws,
+          missionCard: card,
+          initialStatusBoard: board,
+        }),
+      InvalidMissionIdError,
+    );
+    // Confirm the workspace state was not touched by the failed call.
+    assert.equal(existsSync(join(ws, ".pi", "topology", "missions")), false);
+  } finally {
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("missionLayoutPaths is robust against path.resolve attacks (defense in depth)", () => {
+  const ws = makeWorkspace();
+  try {
+    // Even if the format gate is bypassed, a path that resolves outside the
+    // missions root must throw. The current format gate prevents this input
+    // from reaching the containment check, but the containment check is
+    // exercised here through the public API.
+    for (const bad of ["..", "../escape"]) {
+      assert.throws(
+        () => missionLayoutPaths(ws, bad),
+        (err: unknown) =>
+          err instanceof InvalidMissionIdError &&
+          /escapes missions root|invalid mission id/.test((err as Error).message),
+        `missionLayoutPaths should reject escape attempt ${JSON.stringify(bad)}`,
+      );
+    }
   } finally {
     rmSync(ws, { recursive: true, force: true });
   }

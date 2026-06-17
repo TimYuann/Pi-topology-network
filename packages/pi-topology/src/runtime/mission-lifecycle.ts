@@ -49,3 +49,35 @@ export const MISSION_PROGRESS_TO_LIFECYCLE: Record<string, MissionLifecycleState
 export function mapLegacyMissionStatus(legacyStatus: string): MissionLifecycleState {
   return MISSION_PROGRESS_TO_LIFECYCLE[legacyStatus] ?? "draft";
 }
+
+/**
+ * Legacy `MissionProgress.status` values (pre-slice-1).
+ *
+ * The registry's `progress_status` field carries the LEGACY value (so that
+ * pre-slice-1 readers can still inspect Mission progress) while
+ * `lifecycle_state` carries the new MissionLifecycleState. The two are
+ * related via the MISSION_PROGRESS_TO_LIFECYCLE map above but are NOT
+ * interchangeable: e.g. legacy `supervisor_ready` maps to lifecycle
+ * `awaiting_owner_confirmation`.
+ */
+export const MISSION_LEGACY_PROGRESS_STATES = [
+  "draft",
+  "awaiting_owner_confirmation",
+  "supervisor_ready",
+  "running",
+  "blocked",
+  "completed",
+  "abandoned",
+] as const;
+
+export type MissionLegacyProgressStatus = (typeof MISSION_LEGACY_PROGRESS_STATES)[number];
+
+export function isMissionLegacyProgressStatus(value: unknown): value is MissionLegacyProgressStatus {
+  return typeof value === "string" && (MISSION_LEGACY_PROGRESS_STATES as readonly string[]).includes(value);
+}
+
+/**
+ * Default `progress_status` for new registry entries. Matches the spec §3.4
+ * example. Callers can override explicitly.
+ */
+export const DEFAULT_MISSION_PROGRESS_STATUS: MissionLegacyProgressStatus = "awaiting_owner_confirmation";

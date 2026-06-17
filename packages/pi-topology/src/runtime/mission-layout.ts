@@ -4,6 +4,52 @@ import type { MissionCard, StatusBoard } from "./mission.ts";
 import { missionRegistryDir } from "./mission-registry.ts";
 
 /**
+ * Mission id path segment validator.
+ *
+ * Defense in depth against path traversal. The mission id is interpolated into
+ * filesystem paths under `.pi/topology/missions/<mission_id>/`; an unsafe id
+ * could escape that root and write outside the project state directory.
+ *
+ * Rejects:
+ *   - empty / "." / ".."
+ *   - any character outside [A-Za-z0-9._-]
+ *   - any segment starting with "." (hidden directory)
+ *
+ * Caller should also rely on the resolved-path containment check inside
+ * `missionLayoutPaths` for full safety; this is the format gate.
+ */
+
+const SAFE_MISSION_ID_REGEX = /^[A-Za-z0-9._-]+$/;
+const FORBIDDEN_MISSION_IDS = new Set(["", ".", ".."]);
+
+export class InvalidMissionIdError extends Error {
+  public readonly missionId: unknown;
+  constructor(missionId: unknown, message: string) {
+    super(`invalid mission id ${JSON.stringify(missionId)}: ${message}`);
+    this.name = "InvalidMissionIdError";
+    this.missionId = missionId;
+  }
+}
+
+export function validateMissionIdPathSegment(missionId: unknown): asserts missionId is string {
+  if (typeof missionId !== "string") {
+    throw new InvalidMissionIdError(missionId, "must be a string");
+  }
+  if (FORBIDDEN_MISSION_IDS.has(missionId)) {
+    throw new InvalidMissionIdError(missionId, "must not be empty, '.', or '..'");
+  }
+  if (!SAFE_MISSION_ID_REGEX.test(missionId)) {
+    throw new InvalidMissionIdError(
+      missionId,
+      "must match [A-Za-z0-9._-]+ (no slashes, no NUL, no other special chars)",
+    );
+  }
+  if (missionId.startsWith(".")) {
+    throw new InvalidMissionIdError(missionId, "must not start with '.'");
+  }
+}
+
+/**
  * Per-Mission directory layout.
  *
  * Spec reference: `docs/14-pi-topology-mission-runtime-spec.md` §3.1
@@ -54,7 +100,21 @@ export function missionDirectoryRelative(missionId: string): string {
 }
 
 export function missionLayoutPaths(workspaceDir: string, missionId: string): MissionLayoutPaths {
+  validateMissionIdPathSegment(missionId);
   const missionDirAbsolute = path.join(missionRegistryDir(workspaceDir), missionId);
+  // Defense in depth: confirm the resolved path is still inside the
+  // `.pi/topology/missions/` root, even after path.join normalization.
+  const resolvedMissionsRoot = path.resolve(missionRegistryDir(workspaceDir));
+  const resolvedMissionDir = path.resolve(missionDirAbsolute);
+  if (
+    resolvedMissionDir !== resolvedMissionsRoot &&
+    !resolvedMissionDir.startsWith(resolvedMissionsRoot + path.sep)
+  ) {
+    throw new InvalidMissionIdError(
+      missionId,
+      `resolved path ${resolvedMissionDir} escapes missions root ${resolvedMissionsRoot}`,
+    );
+  }
   const missionDirRelative = missionDirectoryRelative(missionId);
   const artifactRoleDirs = {} as MissionLayoutPaths["artifactRoleDirs"];
   for (const role of TOPOLOGY_ROLES_FOR_ARTIFACTS) {
@@ -102,6 +162,7 @@ export interface CreateMissionLayoutResult {
 export function createMissionLayout(input: CreateMissionLayoutInput): CreateMissionLayoutResult {
   const { workspaceDir, missionCard, initialStatusBoard } = input;
   const seedEmptyLedgers = input.seedEmptyLedgers ?? true;
+  // missionLayoutPaths will throw InvalidMissionIdError if mission_id is unsafe.
   const layout = missionLayoutPaths(workspaceDir, missionCard.mission_id);
   if (existsSync(layout.missionDirAbsolute)) {
     return { layout, created: false };

@@ -1,6 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { MissionLifecycleState } from "./mission-lifecycle.ts";
+import {
+  DEFAULT_MISSION_PROGRESS_STATUS,
+  isMissionLegacyProgressStatus,
+  type MissionLegacyProgressStatus,
+  type MissionLifecycleState,
+} from "./mission-lifecycle.ts";
 
 /**
  * Mission Registry — derived summary view over per-Mission evidence files.
@@ -42,6 +47,13 @@ export interface MissionRegistryEntry {
   title: string;
   objective: string;
   lifecycle_state: MissionLifecycleState;
+  /**
+   * Legacy `MissionProgress.status` value, preserved for compatibility with
+   * pre-slice-1 readers. Distinct from `lifecycle_state` because not all
+   * legacy statuses have a 1:1 lifecycle mapping (e.g. `supervisor_ready`
+   * maps to `awaiting_owner_confirmation` in the lifecycle state machine).
+   */
+  progress_status: MissionLegacyProgressStatus;
   owner_gate: OwnerGateState;
   blocked: boolean;
   archived: boolean;
@@ -98,6 +110,7 @@ export interface NewMissionRegistryEntryInput {
   title: string;
   objective: string;
   lifecycle_state: MissionLifecycleState;
+  progress_status?: MissionLegacyProgressStatus;
   owner_gate?: OwnerGateState;
   blocked?: boolean;
   archived?: boolean;
@@ -114,6 +127,7 @@ export function newMissionRegistryEntry(input: NewMissionRegistryEntryInput): Mi
     title: input.title,
     objective: input.objective,
     lifecycle_state: input.lifecycle_state,
+    progress_status: input.progress_status ?? DEFAULT_MISSION_PROGRESS_STATUS,
     owner_gate: input.owner_gate ?? "required",
     blocked: input.blocked ?? false,
     archived: input.archived ?? false,
@@ -166,6 +180,14 @@ export function setRegistryActiveMission(
   missionId: string | null,
   now: Date = new Date(),
 ): MissionRegistry {
+  if (missionId !== null) {
+    const exists = registry.missions.some((m) => m.mission_id === missionId);
+    if (!exists) {
+      throw new Error(
+        `setRegistryActiveMission: cannot set active_mission_id to unknown mission ${JSON.stringify(missionId)}; known: ${registry.missions.map((m) => m.mission_id).join(", ") || "(none)"}`,
+      );
+    }
+  }
   return {
     ...registry,
     active_mission_id: missionId,
@@ -200,8 +222,18 @@ export function validateMissionRegistry(input: unknown): { ok: boolean; errors: 
       if (!entry.title) errors.push(`missions[${i}].title is required`);
       if (!entry.objective) errors.push(`missions[${i}].objective is required`);
       if (!entry.lifecycle_state) errors.push(`missions[${i}].lifecycle_state is required`);
+      if (!isMissionLegacyProgressStatus(entry.progress_status)) {
+        errors.push(`missions[${i}].progress_status must be one of: draft, awaiting_owner_confirmation, supervisor_ready, running, blocked, completed, abandoned`);
+      }
       if (entry.owner_gate !== "required" && entry.owner_gate !== "clear") {
         errors.push(`missions[${i}].owner_gate must be 'required' or 'clear'`);
+      }
+    }
+    // active_mission_id consistency: if set, must reference an existing mission.
+    if (typeof r.active_mission_id === "string" && r.missions.length > 0) {
+      const ids = r.missions.map((m) => (m as MissionRegistryEntry).mission_id);
+      if (!ids.includes(r.active_mission_id)) {
+        errors.push(`active_mission_id "${r.active_mission_id}" not found in missions[]`);
       }
     }
   }
