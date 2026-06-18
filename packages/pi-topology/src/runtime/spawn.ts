@@ -54,6 +54,16 @@ export async function writeMissionLaunchScripts(
     provider?: string;
     model?: string;
     thinking?: "off" | "low" | "medium" | "high";
+    /** Per-mission launch dir override (v0.5.1 Slice B). */
+    launchDir?: string;
+    /** Per-mission env override (v0.5.1 Slice B). */
+    perMissionEnv?: {
+      missionCardPath: string;
+      statusBoardPath: string;
+      eventLogPath: string;
+      incidentLogPath: string;
+      sessionsPath: string;
+    };
   },
 ): Promise<LaunchScriptEntry[]> {
   const roles: TopologyRole[] = ["topology-supervisor", "hq", "repair", "runner", "oracle", "librarian", "scott"];
@@ -67,8 +77,11 @@ export async function writeMissionLaunchScripts(
       model: options.model,
       thinking: options.thinking,
       initialPrompt: role === "topology-supervisor" ? TOPOLOGY_SUPERVISOR_INITIAL_PROMPT : undefined,
+      perMissionEnv: options.perMissionEnv,
     });
-    const scriptPath = await writeRoleLaunchScript(mission.workdir, plan);
+    const scriptPath = await writeRoleLaunchScript(mission.workdir, plan, {
+      launchDir: options.launchDir,
+    });
     entries.push({
       role,
       scriptPath,
@@ -88,6 +101,14 @@ export function writeMissionLaunchScriptsSync(
     provider?: string;
     model?: string;
     thinking?: "off" | "low" | "medium" | "high";
+    launchDir?: string;
+    perMissionEnv?: {
+      missionCardPath: string;
+      statusBoardPath: string;
+      eventLogPath: string;
+      incidentLogPath: string;
+      sessionsPath: string;
+    };
   },
 ): LaunchScriptEntry[] {
   const roles: TopologyRole[] = ["topology-supervisor", "hq", "repair", "runner", "oracle", "librarian", "scott"];
@@ -101,8 +122,11 @@ export function writeMissionLaunchScriptsSync(
       model: options.model,
       thinking: options.thinking,
       initialPrompt: role === "topology-supervisor" ? TOPOLOGY_SUPERVISOR_INITIAL_PROMPT : undefined,
+      perMissionEnv: options.perMissionEnv,
     });
-    const scriptPath = writeRoleLaunchScriptSync(mission.workdir, plan);
+    const scriptPath = writeRoleLaunchScriptSync(mission.workdir, plan, {
+      launchDir: options.launchDir,
+    });
     entries.push({
       role,
       scriptPath,
@@ -117,9 +141,16 @@ export async function writeRoleLaunchScript(
   plan: RoleLaunchPlan,
   options: {
     logPath?: string;
+    /**
+     * Override the launch dir. When provided, the script is written to
+     * `<override>/<role>.sh` instead of the legacy root
+     * `<workdir>/.pi/topology/launch/<role>.sh`. Required for v0.5.1
+     * per-mission runtime alignment (Slice B).
+     */
+    launchDir?: string;
   } = {},
 ): Promise<string> {
-  const dir = path.join(workdir, ".pi", "topology", "launch");
+  const dir = options.launchDir ?? path.join(workdir, ".pi", "topology", "launch");
   await mkdir(dir, { recursive: true });
   const scriptPath = path.join(dir, `${plan.role}.sh`);
   const envLines = [
@@ -153,9 +184,10 @@ export function writeRoleLaunchScriptSync(
   plan: RoleLaunchPlan,
   options: {
     logPath?: string;
+    launchDir?: string;
   } = {},
 ): string {
-  const dir = path.join(workdir, ".pi", "topology", "launch");
+  const dir = options.launchDir ?? path.join(workdir, ".pi", "topology", "launch");
   mkdirSync(dir, { recursive: true });
   const scriptPath = path.join(dir, `${plan.role}.sh`);
   const envLines = [
@@ -200,6 +232,20 @@ export function buildRoleLaunchPlan(
     model?: string;
     thinking?: "off" | "low" | "medium" | "high";
     initialPrompt?: string;
+    /**
+     * Per-mission env override. When provided, these paths are used for
+     * PI_TOPOLOGY_MISSION_CARD / PI_TOPOLOGY_INCIDENT_LOG /
+     * PI_TOPOLOGY_EVENT_LOG / PI_TOPOLOGY_STATUS_BOARD /
+     * PI_TOPOLOGY_SESSIONS_LEDGER instead of the legacy root paths.
+     * Required for v0.5.1 per-mission runtime alignment (Slice B).
+     */
+    perMissionEnv?: {
+      missionCardPath: string;
+      statusBoardPath: string;
+      eventLogPath: string;
+      incidentLogPath: string;
+      sessionsPath: string;
+    };
   },
 ): RoleLaunchPlan {
   const provider = options.provider ?? "minimax-cn";
@@ -229,24 +275,33 @@ export function buildRoleLaunchPlan(
   const initialPrompt = initialPromptForRole(role, options.initialPrompt);
   if (options.thinking) args.push("--thinking", options.thinking);
   if (initialPrompt) args.push(initialPrompt);
+  // Env path resolution: prefer per-mission when provided; fall back to
+  // mission.*_path fields (legacy mode) otherwise.
+  const env = {
+    PI_COMS_DIR: options.registryRoot,
+    PI_TOPOLOGY_PROJECT: mission.project,
+    PI_TOPOLOGY_WORKDIR: mission.workdir,
+    PI_TOPOLOGY_MISSION_ID: mission.mission_id,
+    PI_TOPOLOGY_MISSION_CARD: options.perMissionEnv?.missionCardPath ?? options.missionPath,
+    PI_TOPOLOGY_PACKAGE_ROOT: options.packageRoot,
+    PI_TOPOLOGY_PROVIDER: provider,
+    PI_TOPOLOGY_MODEL: model,
+    PI_TOPOLOGY_ALLOWED_PATHS: mission.allowed_paths.join(":"),
+    PI_TOPOLOGY_FORBIDDEN_ACTIONS: mission.forbidden_actions.join(":"),
+    PI_TOPOLOGY_INCIDENT_LOG: options.perMissionEnv?.incidentLogPath
+      ?? path.join(mission.workdir, mission.incident_log_path),
+    PI_TOPOLOGY_EVENT_LOG: options.perMissionEnv?.eventLogPath
+      ?? path.join(mission.workdir, mission.event_log_path),
+    PI_TOPOLOGY_STATUS_BOARD: options.perMissionEnv?.statusBoardPath
+      ?? path.join(mission.workdir, mission.status_board_path),
+    PI_TOPOLOGY_SESSIONS_LEDGER: options.perMissionEnv?.sessionsPath
+      ?? path.join(mission.workdir, mission.session_ledger_path),
+  };
   return {
     role,
     command: "pi",
     args,
-    env: {
-      PI_COMS_DIR: options.registryRoot,
-      PI_TOPOLOGY_PROJECT: mission.project,
-      PI_TOPOLOGY_WORKDIR: mission.workdir,
-      PI_TOPOLOGY_MISSION_ID: mission.mission_id,
-      PI_TOPOLOGY_MISSION_CARD: options.missionPath,
-      PI_TOPOLOGY_PACKAGE_ROOT: options.packageRoot,
-      PI_TOPOLOGY_PROVIDER: provider,
-      PI_TOPOLOGY_MODEL: model,
-      PI_TOPOLOGY_ALLOWED_PATHS: mission.allowed_paths.join(":"),
-      PI_TOPOLOGY_FORBIDDEN_ACTIONS: mission.forbidden_actions.join(":"),
-      PI_TOPOLOGY_INCIDENT_LOG: path.join(mission.workdir, mission.incident_log_path),
-      PI_TOPOLOGY_EVENT_LOG: path.join(mission.workdir, mission.event_log_path),
-    },
+    env,
   };
 }
 

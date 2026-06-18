@@ -5,38 +5,37 @@ import type { MissionLayoutPaths } from "./mission-layout.ts";
 /**
  * Root compatibility mirror.
  *
- * Spec reference: `docs/14-pi-topology-mission-runtime-spec.md` §3.2
+ * Spec reference: `docs/14-pi-topology-mission-runtime-spec.md` §3.2 + §12.2
  *
- * When `mission-registry.json` exists, root `.pi/topology/*` files are
- * compatibility mirrors of the ACTIVE Mission. They must NOT be the source of
- * truth for archived or inactive Missions.
+ * v0.5.1 update: root `.pi/topology/*` files are ALWAYS compatibility mirrors
+ * of the active Mission (or legacy fallback in single-Mission mode). The root
+ * is NEVER a second source of truth. All runtime writes go to per-mission
+ * canonical paths via the active-mission-resolver; root mirror is updated
+ * passively by `syncRootMirrorFromLayout` (called by `migrateLegacyToPerMission`
+ * and other slice entry points).
  *
- * Slice 1 contract: copy selected files from the active Mission folder to the
- * root `.pi/topology/` location. This keeps the existing single-mission UI
- * (`topology_status` reading root paths) working without a destructive
- * migration.
- *
- * What gets mirrored in slice 1:
+ * What gets mirrored:
  *   - mission-card.json
  *   - status-board.json
  *   - runtime-events.jsonl
  *   - incident-log.jsonl
  *   - sessions.jsonl
  *
- * What does NOT get mirrored in slice 1 (deferred to later slices):
- *   - launch/ scripts   (slice 6 migration)
- *   - artifacts/         (slice 5 dashboard / slice 6)
- *   - packet-ledger      (slice 4 inbox cleanup — packet routing unchanged per
- *                         slice 1 rules: "Do not change raw packet transport
- *                         routing")
- *   - evidence-index     (slice 5 dashboard)
- *   - slices/            (per slice handoff, grows slice-by-slice)
+ * What is NOT mirrored by this module (and the spec reasoning):
+ *   - launch/ scripts: per spec §3.2 list, root `.pi/topology/launch/*` is
+ *     a mirror; in v0.5.1 the per-mission `missions/<id>/launch/<role>.sh`
+ *     is the canonical location. Root launch scripts are deprecated; new
+ *     code never writes to them.
+ *   - artifacts/<role>/: per spec §3.2 list, root `.pi/topology/artifacts/*`
+ *     is a mirror; in v0.5.1 per-mission `missions/<id>/artifacts/<role>/`
+ *     is canonical. The legacy root artifacts/ dir is read-only fallback.
+ *   - packet-ledger.jsonl: slice 4 inbox cleanup, raw transport unchanged.
+ *   - evidence-index.jsonl: slice 5 dashboard.
+ *   - slices/: per-slice handoff, grows slice-by-slice.
  *
- * When the active pointer is cleared (no active Mission), root mirror files are
- * left in place but treated as legacy (matching the spec §3.2 migration note:
- * "During migration, root files may be canonical only when no
- * mission-registry.json exists."). Slice 6 migration is responsible for
- * canonicalizing the legacy form.
+ * When the active pointer is cleared (no active Mission), root mirror files
+ * are treated as legacy fallback (matching spec §3.2: "During migration,
+ * root files may be canonical only when no mission-registry.json exists").
  */
 
 export const ROOT_MIRROR_FILES = [

@@ -4,10 +4,11 @@ import { fileURLToPath } from "node:url";
 import type { MissionCard, TopologyRole } from "../runtime/mission.ts";
 import type { TopologyPacket } from "../runtime/packet.ts";
 import { evaluateToolCall } from "../runtime/guard.ts";
-import { appendEvent } from "../state/event-log.ts";
+import { appendEvent, appendEventSync } from "../state/event-log.ts";
 import { clearPacketMemory, hasClosedPacket, markPacketSeen } from "../state/packet-memory.ts";
 import { appendSessionRecordSync } from "../state/session-ledger.ts";
 import { markRoleAlive } from "../runtime/status-board.ts";
+import { resolveActiveMissionPaths } from "../runtime/active-mission-resolver.ts";
 import { startLiveTopologyEndpoint, type LiveTopologyEndpoint } from "../transport/live-coms.ts";
 import { refreshPeerRegistryHeartbeat, removePeerRegistry } from "../transport/registry.ts";
 import { registerTopologyCommands, type CommandContext } from "./commands.ts";
@@ -72,7 +73,11 @@ export function registerPiTopology(pi: PiLike): void {
     const tool = classifyTool(toolName);
     const decision = evaluateToolCall({
       role,
-      mission,
+      mission: {
+        allowed_paths: mission.allowed_paths,
+        forbidden_actions: mission.forbidden_actions,
+        mission_id: mission.mission_id,
+      },
       tool,
       path: typeof args.path === "string" ? args.path : typeof args.file === "string" ? args.file : undefined,
       command: typeof args.command === "string" ? args.command : undefined,
@@ -88,20 +93,28 @@ export function registerPiTopology(pi: PiLike): void {
         tool: toolName,
         decision: decision.decision,
         reason: decision.reason,
+        tool_guidance: decision.tool_guidance,
         incident: decision.incident,
         evidence: {
           transport: [mission.incident_log_path].filter(Boolean),
           business: [toolName],
-          inference: [decision.reason],
+          inference: [decision.reason ? [decision.reason] : [], ...(decision.tool_guidance ?? [])],
         },
       });
     }
+    // v0.5.1 Slice C: include tool_guidance in the block feedback so the
+    // LLM sees the alternative path (e.g. "use topology_write_artifact")
+    // immediately, not just the deny reason.
+    const blockReason = decision.tool_guidance && decision.tool_guidance.length > 0
+      ? [decision.reason ?? "", ...decision.tool_guidance].filter(Boolean).join("\n  - ")
+      : decision.reason;
     return {
       block: true,
-      reason: decision.reason,
+      reason: blockReason,
       details: {
         decision: decision.decision,
         incident: decision.incident,
+        tool_guidance: decision.tool_guidance ?? [],
       },
     };
   });
@@ -329,9 +342,22 @@ function markTopologySessionAlive(role: TopologyRole, sessionId: string, context
   const loaded = loadMissionForRuntime(missionOverride);
   if (!loaded) return;
   const { mission, workdir } = loaded;
-  const statusPath = path.join(workdir, mission.status_board_path);
-  const sessionLedgerPath = path.join(workdir, mission.session_ledger_path);
-  const scriptPath = process.env.PI_TOPOLOGY_LAUNCH_SCRIPT ?? path.join(workdir, ".pi", "topology", "launch", `${role}.sh`);
+  // v0.5.1 Slice D: prefer per-mission canonical paths via the resolver.
+  const res = resolveActiveMissionPaths(workdir);
+  const isPerMission = res.mode === "per-mission";
+  const statusPath = isPerMission && res.statusBoardPath
+    ? res.statusBoardPath
+    : path.join(workdir, mission.status_board_path);
+  const sessionLedgerPath = isPerMission && res.sessionsPath
+    ? res.sessionsPath
+    : path.join(workdir, mission.session_ledger_path);
+  const eventLogPath = isPerMission && res.eventLogPath
+    ? res.eventLogPath
+    : (mission.event_log_path ? path.join(workdir, mission.event_log_path) : null);
+  const scriptPath = process.env.PI_TOPOLOGY_LAUNCH_SCRIPT
+    ?? (isPerMission && res.launchDir
+      ? path.join(res.launchDir, `${role}.sh`)
+      : path.join(workdir, ".pi", "topology", "launch", `${role}.sh`));
   const now = new Date().toISOString();
   appendSessionRecordSync(sessionLedgerPath, {
     mission_id: mission.mission_id,
@@ -357,9 +383,8 @@ function markTopologySessionAlive(role: TopologyRole, sessionId: string, context
     mkdirSync(path.dirname(statusPath), { recursive: true });
     writeFileSync(statusPath, `${JSON.stringify(nextBoard, null, 2)}\n`, "utf8");
   }
-  if (mission.event_log_path) {
-    const eventPath = path.join(workdir, mission.event_log_path);
-    void appendEvent(eventPath, {
+  if (eventLogPath) {
+    appendEventSync(eventLogPath, {
       event_type: "session_alive",
       mission_id: mission.mission_id,
       role,
@@ -383,7 +408,11 @@ function heartbeatTopologySession(
   const loaded = loadMissionForRuntime(missionOverride);
   if (!loaded) return;
   const { mission, workdir } = loaded;
-  const statusPath = path.join(workdir, mission.status_board_path);
+  // v0.5.1 Slice D: prefer per-mission canonical status-board.json.
+  const res = resolveActiveMissionPaths(workdir);
+  const statusPath = res.mode === "per-mission" && res.statusBoardPath
+    ? res.statusBoardPath
+    : path.join(workdir, mission.status_board_path);
   if (!existsSync(statusPath)) return;
   const board = JSON.parse(readFileSync(statusPath, "utf8"));
   const current = board.peer_status?.[role];

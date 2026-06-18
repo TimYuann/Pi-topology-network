@@ -62,3 +62,13 @@
 首次回复是 ACK。owner-facing approval request / blocked / needs-clarification 可以 inline 给 owner。
 
 role-to-role checkpoint / merge / decision packet 才使用 `topology_send`，且必须提供非空 `body`。
+
+## Runtime Path Discipline (v0.5.1)
+
+所有 topology_* 工具自动解析 active Mission → per-mission canonical：
+
+- 读写 artifacts 用 `topology_write_artifact` / `topology_read_artifact`，写到 `missions/<id>/artifacts/<role>/`。
+- 不要手写 JSONL parser（runtime-events.jsonl / sessions.jsonl / incident-log.jsonl）。使用 `topology_status` / `topology_dashboard` / `topology_dashboard_verbose`。
+- 工具返回的 `artifact_path` 字段就是该次写入的位置；该路径指向 per-mission canonical，root 是 mirror 不是副本。
+- 如果 guard 报 block / role_boundary_violation，查看 `tool_guidance` 字段，遵守其中建议。
+- launch script 路径由 `topology_spawn_role` 自动写到 `missions/<id>/launch/<role>.sh`；root `.pi/topology/launch/` 是历史 mirror。

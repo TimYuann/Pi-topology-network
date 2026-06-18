@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInitialStatusBoard, createMissionDraft, normalizeMissionCard, runWatchdogCheck, validateMissionCard, type WorkerRole } from "../runtime/mission.ts";
+import { resolveActiveMissionPaths, type ActiveMissionResolution } from "../runtime/active-mission-resolver.ts";
 import { missionPathForWorkspace } from "../runtime/mission-path.ts";
 import { createPacket, type PacketType } from "../runtime/packet.ts";
 import { buildRoleLaunchPlan, writeMissionLaunchScripts, writeMissionLaunchScriptsSync, writeRoleLaunchScript } from "../runtime/spawn.ts";
@@ -360,6 +361,19 @@ export function registerTopologyTools(pi: PiLike): void {
         log_path: safeLogPath,
         evidence: { transport: [loaded.missionPath], business: [params.role], inference: [] },
       });
+      // Per-mission runtime alignment (v0.5.1 Slice B): in per-mission mode,
+      // write launch script to per-mission launch dir and inject per-mission
+      // canonical env vars.
+      const res = loaded.resolution;
+      const isPerMission = res.mode === "per-mission";
+      const launchDir = isPerMission ? res.launchDir ?? undefined : undefined;
+      const perMissionEnv = isPerMission ? {
+        missionCardPath: res.missionCardPath!,
+        statusBoardPath: res.statusBoardPath!,
+        eventLogPath: res.eventLogPath!,
+        incidentLogPath: res.incidentLogPath!,
+        sessionsPath: res.sessionsPath!,
+      } : undefined;
       const plan = buildRoleLaunchPlan(loaded.mission, params.role, {
         packageRoot,
         missionPath: loaded.missionPath,
@@ -368,8 +382,9 @@ export function registerTopologyTools(pi: PiLike): void {
         model: DEFAULT_ROLE_MODEL,
         thinking: DEFAULT_ROLE_THINKING,
         initialPrompt: params.initial_prompt,
+        perMissionEnv,
       });
-      const scriptPath = await writeRoleLaunchScript(ctx.cwd, plan, { logPath: safeLogPath });
+      const scriptPath = await writeRoleLaunchScript(ctx.cwd, plan, { logPath: safeLogPath, launchDir });
       let launchRequested = false;
       await appendSessionRecord(loaded.sessionLedgerPath, {
         mission_id: loaded.mission.mission_id,
@@ -585,7 +600,14 @@ export function registerTopologyTools(pi: PiLike): void {
       const loaded = loadRuntimeState(ctx.cwd);
       if (!loaded.ok) return toolText(loaded.message, loaded);
       const now = new Date().toISOString();
-      const dir = path.join(ctx.cwd, ".pi", "topology", "artifacts", params.role);
+      // Per-mission runtime alignment (v0.5.1 Slice C): in per-mission mode
+      // write the artifact to `missions/<id>/artifacts/<role>/`; in legacy
+      // mode keep the root path for backward compatibility.
+      const res = loaded.resolution;
+      const artifactsRoot = res.mode === "per-mission" && res.artifactsDir
+        ? res.artifactsDir
+        : path.join(ctx.cwd, ".pi", "topology", "artifacts");
+      const dir = path.join(artifactsRoot, params.role);
       const filename = `${now.replace(/[:.]/g, "-")}-${sanitizeArtifactSegment(params.kind)}-${sanitizeArtifactSegment(params.title)}.md`;
       const artifactPath = path.join(dir, filename);
       const relativePath = path.relative(ctx.cwd, artifactPath);
@@ -643,7 +665,27 @@ export function registerTopologyTools(pi: PiLike): void {
     async execute(_id: string, params: { artifact_path: string; full?: boolean; max_bytes?: number }, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
       const loaded = loadRuntimeState(ctx.cwd);
       if (!loaded.ok) return toolText(loaded.message, loaded);
-      const resolved = resolveArtifactPath(ctx.cwd, params.artifact_path);
+      // Per-mission runtime alignment (v0.5.1 Slice C): try the per-mission
+      // artifacts dir first; fall back to the root artifacts dir for legacy
+      // compatibility (root mirror).
+      const res = loaded.resolution;
+      const perMissionArtifactRoot = res.mode === "per-mission" && res.artifactsDir
+        ? res.artifactsDir
+        : null;
+      let resolved: { ok: true; absolutePath: string; relativePath: string } | { ok: false; message: string };
+      if (perMissionArtifactRoot) {
+        // Try per-mission first.
+        const perMissionResolved = resolveArtifactPathIn(ctx.cwd, perMissionArtifactRoot, params.artifact_path);
+        if (perMissionResolved.ok) {
+          resolved = perMissionResolved;
+        } else {
+          // Fall back to root mirror.
+          const rootArtifactRoot = path.join(ctx.cwd, ".pi", "topology", "artifacts");
+          resolved = resolveArtifactPathIn(ctx.cwd, rootArtifactRoot, params.artifact_path);
+        }
+      } else {
+        resolved = resolveArtifactPath(ctx.cwd, params.artifact_path);
+      }
       if (!resolved.ok) return toolText(resolved.message, resolved);
       const body = readFileSync(resolved.absolutePath, "utf8");
       const formatted = formatArtifactRead(resolved.relativePath, body, params);
@@ -827,20 +869,25 @@ function loadRuntimeState(cwd: string): { ok: false; message: string } | {
   incidentPath: string;
   eventPath: string;
   sessionLedgerPath: string;
+  resolution: ActiveMissionResolution;
 } {
-  const missionPath = missionPathFor(cwd);
-  if (!existsSync(missionPath)) return { ok: false, message: `No topology mission card found at ${missionPath}` };
+  const res = resolveActiveMissionPaths(cwd);
+  if (res.mode === "none" || !res.missionCardPath || !res.statusBoardPath || !res.sessionsPath
+      || !res.eventLogPath || !res.incidentLogPath) {
+    return { ok: false, message: `No active topology mission found in ${cwd} (resolver mode: ${res.mode}; warnings: ${res.warnings.join("; ") || "none"})` };
+  }
+  const missionPath = res.missionCardPath;
   let mission = JSON.parse(readFileSync(missionPath, "utf8")) as ReturnType<typeof createMissionDraft>;
   const normalized = normalizeMissionCard(mission);
   mission = normalized.mission as ReturnType<typeof createMissionDraft>;
   if (normalized.changed) writeJson(missionPath, mission);
   const validation = validateMissionCard(mission);
   if (!validation.ok) return { ok: false, message: `Invalid mission card: ${validation.errors.join("; ")}` };
-  const statusPath = path.join(cwd, mission.status_board_path);
+  const statusPath = res.statusBoardPath;
   const board = existsSync(statusPath)
     ? JSON.parse(readFileSync(statusPath, "utf8")) as ReturnType<typeof createInitialStatusBoard>
     : createInitialStatusBoard(mission);
-  const sessionLedgerPath = path.join(cwd, mission.session_ledger_path ?? ".pi/topology/sessions.jsonl");
+  const sessionLedgerPath = res.sessionsPath;
   ensureSessionLedger(cwd, mission, missionPath, sessionLedgerPath);
   const registryRoot = localTransportRoot(mission.project);
   const reconciledBoard = reconcileBoardWithLiveRegistry(
@@ -856,9 +903,10 @@ function loadRuntimeState(cwd: string): { ok: false; message: string } | {
     board: reconciledBoard,
     missionPath,
     statusPath,
-    incidentPath: path.join(cwd, mission.incident_log_path),
-    eventPath: path.join(cwd, mission.event_log_path),
+    incidentPath: res.incidentLogPath,
+    eventPath: res.eventLogPath,
     sessionLedgerPath,
+    resolution: res,
   };
 }
 
@@ -879,6 +927,21 @@ function readJsonl(file: string): Array<Record<string, unknown>> {
 }
 
 function ensureSessionLedger(cwd: string, mission: ReturnType<typeof createMissionDraft>, missionPath: string, sessionLedgerPath: string): void {
+  // v0.5.1 Slice B: per-mission mode writes launch scripts to per-mission
+  // launch dir and uses per-mission env overrides.
+  const res = resolveActiveMissionPaths(cwd);
+  const isPerMission = res.mode === "per-mission";
+  const launchDir = isPerMission ? res.launchDir ?? undefined : undefined;
+  const perMissionEnv = isPerMission && res.missionCardPath && res.statusBoardPath
+    && res.eventLogPath && res.incidentLogPath && res.sessionsPath
+    ? {
+      missionCardPath: res.missionCardPath,
+      statusBoardPath: res.statusBoardPath,
+      eventLogPath: res.eventLogPath,
+      incidentLogPath: res.incidentLogPath,
+      sessionsPath: res.sessionsPath,
+    }
+    : undefined;
   const launchScripts = writeMissionLaunchScriptsSync(mission, {
     packageRoot: resolvePackageRoot(),
     missionPath,
@@ -886,6 +949,8 @@ function ensureSessionLedger(cwd: string, mission: ReturnType<typeof createMissi
     provider: "minimax-cn",
     model: "MiniMax-M3",
     thinking: "low",
+    launchDir,
+    perMissionEnv,
   });
   if (countJsonl(sessionLedgerPath) > 0) return;
   for (const entry of launchScripts) {
@@ -1121,11 +1186,25 @@ function sanitizeArtifactSegment(value: string): string {
 
 function resolveArtifactPath(cwd: string, inputPath: string): { ok: true; absolutePath: string; relativePath: string } | { ok: false; message: string } {
   const artifactRoot = path.resolve(cwd, ".pi", "topology", "artifacts");
+  return resolveArtifactPathIn(cwd, artifactRoot, inputPath);
+}
+
+/**
+ * Generic artifact path resolver that scopes to an arbitrary artifact root
+ * directory. Used by `topology_read_artifact` to first try the per-mission
+ * canonical artifacts dir, then fall back to the root mirror.
+ */
+function resolveArtifactPathIn(
+  cwd: string,
+  artifactRoot: string,
+  inputPath: string,
+): { ok: true; absolutePath: string; relativePath: string } | { ok: false; message: string } {
+  const resolvedRoot = path.resolve(artifactRoot);
   const absolutePath = path.isAbsolute(inputPath)
     ? path.resolve(inputPath)
     : path.resolve(cwd, inputPath);
-  if (absolutePath !== artifactRoot && !absolutePath.startsWith(`${artifactRoot}${path.sep}`)) {
-    return { ok: false, message: `artifact_path must be under ${path.relative(cwd, artifactRoot)}` };
+  if (absolutePath !== resolvedRoot && !absolutePath.startsWith(`${resolvedRoot}${path.sep}`)) {
+    return { ok: false, message: `artifact_path must be under ${path.relative(cwd, resolvedRoot)}` };
   }
   if (!existsSync(absolutePath)) {
     return { ok: false, message: `artifact not found: ${path.relative(cwd, absolutePath)}` };

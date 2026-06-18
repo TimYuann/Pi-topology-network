@@ -86,3 +86,14 @@ If `topology_send` fails (`undefined msg_id`, hop limit, unreachable, empty body
 
 For all role-to-role packets, if policy is clear:
 ACK packet → first action immediately → optional STATUS packet → artifact if report is long → REPORT packet with compact body → standby until the REPORT itself is ACKed before treating that work slice as closed.
+
+## 9) Runtime Path Discipline (v0.5.1)
+
+`per-mission .pi/topology/missions/<mission_id>/` is the **only** canonical source of truth for an active Mission. Root `.pi/topology/*` is a compatibility mirror; it is NOT a second source of truth.
+
+- **Always use the topology_* tools for runtime state.** Do not hand-write JSON / JSONL parsers. `topology_status`, `topology_dashboard`, `topology_dashboard_verbose`, and `topology_read_artifact` are the only sanctioned readers.
+- **For long reports / decisions, use `topology_write_artifact`.** It routes to `missions/<id>/artifacts/<role>/` and emits a compact `artifact_path` you can quote in a packet.
+- **For short business messages, use `topology_send`.** Body is an object with `status / summary / next / note / artifact_path`; never inline a long report into a packet body.
+- **When the guard returns a `block`, read the `tool_guidance` field.** It tells you which topology_* tool to use instead, and where the canonical write path is.
+- **Do not edit `.pi/topology/...` files directly** with `write` / `edit` / shell redirection. Use the topology tools. If the guard blocks you, escalate to HQ with a topology_send REPORT explaining why.
+- **Per-mission env vars are set by the launch script:** `PI_TOPOLOGY_MISSION_CARD`, `PI_TOPOLOGY_INCIDENT_LOG`, `PI_TOPOLOGY_EVENT_LOG`, `PI_TOPOLOGY_STATUS_BOARD`, `PI_TOPOLOGY_SESSIONS_LEDGER` all point to the per-mission canonical paths. Do not overwrite them.

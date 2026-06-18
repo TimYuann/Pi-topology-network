@@ -3,6 +3,7 @@ import path from "node:path";
 import { TOPOLOGY_ROLES, type MissionCard, type StatusBoard, type TopologyRole } from "../runtime/mission.ts";
 import { activePendingPackets } from "../runtime/status-board.ts";
 import { readFreshPeerRegistrySync } from "../transport/registry.ts";
+import { resolveActiveMissionPaths } from "../runtime/active-mission-resolver.ts";
 
 export interface TopologyUiContext {
   cwd?: string;
@@ -95,12 +96,21 @@ export function compactStatusLine(snapshot: TopologyUiSnapshot): string {
 }
 
 export function buildTopologyUiSnapshot(cwd: string, currentRole = process.env.PI_TOPOLOGY_ROLE ?? process.env.PI_TOPOLOGY_CNAME ?? "unknown"): TopologyUiSnapshot {
-  const missionPath = process.env.PI_TOPOLOGY_MISSION_CARD ?? path.join(cwd, ".pi", "topology", "mission-card.json");
+  // v0.5.1 Slice D: use the active Mission resolver to pick per-mission
+  // canonical paths; fall back to legacy root paths when no registry exists.
+  const res = resolveActiveMissionPaths(cwd);
+  const envCard = process.env.PI_TOPOLOGY_MISSION_CARD;
+  const missionPath = envCard
+    ?? res.missionCardPath
+    ?? path.join(cwd, ".pi", "topology", "mission-card.json");
   const mission = readJson<MissionCard>(missionPath);
-  const project = mission?.project ?? process.env.PI_TOPOLOGY_PROJECT ?? path.basename(cwd);
-  const statusPath = mission ? path.join(cwd, mission.status_board_path) : path.join(cwd, ".pi", "topology", "status-board.json");
-  const sessionLedgerPath = mission ? path.join(cwd, mission.session_ledger_path) : path.join(cwd, ".pi", "topology", "sessions.jsonl");
-  const incidentPath = mission ? path.join(cwd, mission.incident_log_path) : path.join(cwd, ".pi", "topology", "incident-log.jsonl");
+  const project = mission?.project ?? res.project ?? process.env.PI_TOPOLOGY_PROJECT ?? path.basename(cwd);
+  const statusPath = res.statusBoardPath
+    ?? (mission ? path.join(cwd, mission.status_board_path) : path.join(cwd, ".pi", "topology", "status-board.json"));
+  const sessionLedgerPath = res.sessionsPath
+    ?? (mission ? path.join(cwd, mission.session_ledger_path) : path.join(cwd, ".pi", "topology", "sessions.jsonl"));
+  const incidentPath = res.incidentLogPath
+    ?? (mission ? path.join(cwd, mission.incident_log_path) : path.join(cwd, ".pi", "topology", "incident-log.jsonl"));
   const board = readJson<StatusBoard>(statusPath);
   const sessionRecords = readJsonl<Record<string, unknown>>(sessionLedgerPath);
   const recordsByRole = countRecordsByRole(sessionRecords);

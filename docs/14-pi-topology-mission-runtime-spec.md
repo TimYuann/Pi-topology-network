@@ -127,7 +127,7 @@ The root files remain compatibility mirrors for the active Mission during the mi
 
 The canonical per-Mission files live under `.pi/topology/missions/<mission_id>/`.
 
-During migration, root files may be canonical only when no `mission-registry.json` exists. Once the registry exists, root files must mirror the active Mission and must not be used as the source of truth for archived or inactive Missions.
+**v0.5.1 mirror rule (clarification):** Per-mission canonical files under `missions/<mission_id>/` are the **only** source of truth for an active Mission. Root `.pi/topology/*` files are a compatibility mirror maintained passively by `syncRootMirrorFromLayout` (called by `migrateLegacyToPerMission` and on subsequent state changes). All runtime writes (tools, session_start, heartbeat, guard, role launch) MUST go to per-mission canonical paths via the active-Mission resolver (`resolveActiveMissionPaths`); root writes are deprecated and may be removed in v0.6. The `launch/*` and `artifacts/*` mirrors are kept for legacy read fallback only; new code never writes there. During migration, root files may be canonical only when no `mission-registry.json` exists. Once the registry exists, root files must mirror the active Mission and must not be used as the source of truth for archived or inactive Missions.
 
 ### 3.3 Active Mission Pointer
 

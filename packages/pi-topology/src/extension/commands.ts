@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInitialStatusBoard, createMissionDraft, normalizeMissionCard, runWatchdogCheck, validateMissionCard, type MissionCard, type StatusBoard } from "../runtime/mission.ts";
 import { missionPathForWorkspace } from "../runtime/mission-path.ts";
+import { resolveActiveMissionPaths } from "../runtime/active-mission-resolver.ts";
 import { activePendingPackets, reconcileBoardWithLiveRegistry, reconcileBoardWithSessionRecords } from "../runtime/status-board.ts";
 import { buildRoleLaunchPlan, writeMissionLaunchScriptsSync, writeRoleLaunchScript } from "../runtime/spawn.ts";
 import { markMissionProgressForHqLaunch, markRoleLaunchRequested } from "../runtime/status-board.ts";
@@ -668,20 +669,23 @@ function loadTopologyState(cwd: string): {
   sessionLedgerPath: string;
   outboxPath: string;
 } {
-  const missionPath = missionPathFor(cwd);
-  let mission = readJson<MissionCard>(missionPath);
+  const res = resolveActiveMissionPaths(cwd);
+  const missionPath = res.missionCardPath;
+  let mission: MissionCard | null = missionPath && existsSync(missionPath)
+    ? readJson<MissionCard>(missionPath)
+    : null;
   if (mission) {
     const normalized = normalizeMissionCard(mission);
     mission = normalized.mission;
-    if (normalized.changed) writeJson(missionPath, mission);
+    if (normalized.changed) writeJson(missionPath!, mission);
   }
-  const statusPath = mission ? path.join(cwd, mission.status_board_path) : path.join(cwd, ".pi/topology/status-board.json");
-  const incidentPath = mission ? path.join(cwd, mission.incident_log_path) : path.join(cwd, ".pi/topology/incident-log.jsonl");
-  const eventPath = mission ? path.join(cwd, mission.event_log_path) : path.join(cwd, ".pi/topology/runtime-events.jsonl");
-  const sessionLedgerPath = mission ? path.join(cwd, mission.session_ledger_path ?? ".pi/topology/sessions.jsonl") : path.join(cwd, ".pi/topology/sessions.jsonl");
-  if (mission) ensureSessionLedger(cwd, mission, missionPath, sessionLedgerPath);
+  const statusPath = res.statusBoardPath ?? path.join(cwd, ".pi/topology/status-board.json");
+  const incidentPath = res.incidentLogPath ?? path.join(cwd, ".pi/topology/incident-log.jsonl");
+  const eventPath = res.eventLogPath ?? path.join(cwd, ".pi/topology/runtime-events.jsonl");
+  const sessionLedgerPath = res.sessionsPath ?? path.join(cwd, ".pi/topology/sessions.jsonl");
+  if (mission && missionPath) ensureSessionLedger(cwd, mission, missionPath, sessionLedgerPath);
   const rawBoard = readJson<StatusBoard>(statusPath);
-  const project = mission?.project ?? path.basename(cwd);
+  const project = mission?.project ?? res.project ?? path.basename(cwd);
   const outboxPath = path.join(process.env.PI_COMS_DIR ?? path.join("/tmp", `pi-topology-${project}`), "projects", project, "packets", "outbox.jsonl");
   const board = rawBoard && mission
     ? reconcileBoardWithLiveRegistry(
@@ -690,10 +694,25 @@ function loadTopologyState(cwd: string): {
     )
     : rawBoard;
   if (board && rawBoard && JSON.stringify(board) !== JSON.stringify(rawBoard)) writeJson(statusPath, board);
-  return { mission, board, missionPath, statusPath, incidentPath, eventPath, sessionLedgerPath, outboxPath };
+  return { mission, board, missionPath: missionPath ?? "", statusPath, incidentPath, eventPath, sessionLedgerPath, outboxPath };
 }
 
 function ensureSessionLedger(cwd: string, mission: MissionCard, missionPath: string, sessionLedgerPath: string): void {
+  // v0.5.1 Slice B: in per-mission mode, write launch scripts to per-mission
+  // launch dir; in legacy mode keep root behavior.
+  const res = resolveActiveMissionPaths(cwd);
+  const isPerMission = res.mode === "per-mission";
+  const launchDir = isPerMission ? res.launchDir ?? undefined : undefined;
+  const perMissionEnv = isPerMission && res.missionCardPath && res.statusBoardPath
+    && res.eventLogPath && res.incidentLogPath && res.sessionsPath
+    ? {
+      missionCardPath: res.missionCardPath,
+      statusBoardPath: res.statusBoardPath,
+      eventLogPath: res.eventLogPath,
+      incidentLogPath: res.incidentLogPath,
+      sessionsPath: res.sessionsPath,
+    }
+    : undefined;
   const launchScripts = writeMissionLaunchScriptsSync(mission, {
     packageRoot: resolvePackageRoot(),
     missionPath,
@@ -701,6 +720,8 @@ function ensureSessionLedger(cwd: string, mission: MissionCard, missionPath: str
     provider: "minimax-cn",
     model: "MiniMax-M3",
     thinking: "low",
+    launchDir,
+    perMissionEnv,
   });
   if (countJsonl(sessionLedgerPath) > 0) return;
   for (const entry of launchScripts) {

@@ -39,6 +39,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createMissionLayout, missionLayoutPaths, validateMissionIdPathSegment } from "./mission-layout.ts";
+import { syncRootMirrorFromLayout } from "./root-mirror.ts";
 import {
   addMissionToRegistry,
   createEmptyRegistry,
@@ -624,6 +625,11 @@ export function migrateLegacyToPerMission(
     },
     now,
   );
+
+  // v0.5.1 Slice D / spec §3.2 + §12.2: after migration, sync root
+  // compatibility mirror from the new per-mission canonical files. Root
+  // stays a mirror; per-mission is the canonical source of truth.
+  syncRootMirrorFromLayout(workspaceDir, layout);
 
   return {
     ok: true,

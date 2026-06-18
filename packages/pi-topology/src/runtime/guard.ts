@@ -10,6 +10,14 @@ type GuardRole = TopologyRole | ExternalReadOnlyRole;
 export interface GuardMission {
   allowed_paths: string[];
   forbidden_actions: string[];
+  /**
+   * Active Mission id (v0.5.1 Slice C). When set, per-mission
+   * `.pi/topology/missions/<mission_id>/artifacts/<role>/` is added to
+   * the controlled-coordination allowlist for `topology-supervisor` and
+   * `hq`. The legacy root `.pi/topology/artifacts/<role>/` is also kept
+   * for backward compatibility.
+   */
+  mission_id?: string;
 }
 
 export interface GuardInput {
@@ -33,6 +41,12 @@ export interface GuardIncident {
 export interface GuardDecision {
   decision: "allow" | "block" | "owner_gate";
   reason?: string;
+  /**
+   * v0.5.1 Slice C: actionable guidance returned to the LLM explaining
+   * why the tool call was blocked and what to do instead. Mirrored in
+   * the tool_call handler's block reason.
+   */
+  tool_guidance?: string[];
   incident?: GuardIncident;
 }
 
@@ -56,6 +70,10 @@ export function evaluateToolCall(input: GuardInput): GuardDecision {
     return {
       decision: "owner_gate",
       reason: "forbidden shell action requires owner confirmation",
+      tool_guidance: [
+        "Ask the owner explicitly before retrying the shell command (forbidden_actions requires owner gate).",
+        "Use a read-only tool (read, grep, find, ls) for inspection, or break the work into smaller non-forbidden commands.",
+      ],
       incident: incidentRecord,
     };
   }
@@ -68,7 +86,12 @@ export function evaluateToolCall(input: GuardInput): GuardDecision {
     persistIncident(incidentRecord);
     return {
       decision: "block",
-      reason: `${input.role} cannot write through shell commands`,
+      reason: `${input.role} cannot write through shell commands — use the topology_write_artifact tool to write ${input.role} artifacts to .pi/topology/${input.mission.mission_id ? `missions/${input.mission.mission_id}/artifacts/${input.role}/` : `artifacts/${input.role}/`}`,
+      tool_guidance: [
+        `Use topology_write_artifact (role=${input.role}, kind=...) to write a long report or artifact; it routes to .pi/topology/${input.mission.mission_id ? `missions/${input.mission.mission_id}/artifacts/${input.role}/` : `artifacts/${input.role}/`}.`,
+        `Do NOT use shell redirection (cat >, tee, sed -i, etc.) for ${input.role} writes — that path is reserved for repair and is blocked for all other roles.`,
+        `Read-only inspection is fine via read/grep/find/ls.`,
+      ],
       incident: incidentRecord,
     };
   }
@@ -83,14 +106,18 @@ export function evaluateToolCall(input: GuardInput): GuardDecision {
     persistIncident(incidentRecord);
     return {
       decision: "block",
-      reason: `${input.role} cannot write artifacts for ${input.artifact_role ?? "another role"}`,
+      reason: `${input.role} cannot write artifacts for ${input.artifact_role ?? "another role"} — each role can only write its own artifacts`,
+      tool_guidance: [
+        `topology_write_artifact only allows a role to write its own artifacts/<role>/ dir.`,
+        `If you need to share evidence, hand off via topology_send (REPORT packet) or have the other role write the artifact themselves.`,
+      ],
       incident: incidentRecord,
     };
   }
 
   if (!writes) return { decision: "allow" };
 
-  if (input.path && isControlledCoordinationWrite(input.role, input.path, input.mission.allowed_paths)) {
+  if (input.path && isControlledCoordinationWrite(input.role, input.path, input.mission.allowed_paths, input.mission.mission_id)) {
     return { decision: "allow" };
   }
 
@@ -103,6 +130,10 @@ export function evaluateToolCall(input: GuardInput): GuardDecision {
     return {
       decision: "block",
       reason: `${input.role} is read-only by default`,
+      tool_guidance: [
+        `${input.role} is a read-only role. Use read/grep/find/ls for inspection.`,
+        `To share a long report as ${input.role}, ask HQ to call topology_write_artifact on your behalf via a topology_send REPORT packet.`,
+      ],
       incident: incidentRecord,
     };
   }
@@ -113,9 +144,17 @@ export function evaluateToolCall(input: GuardInput): GuardDecision {
       path: input.path,
     });
     persistIncident(incidentRecord);
+    const perMissionDir = input.mission.mission_id
+      ? `.pi/topology/missions/${input.mission.mission_id}/artifacts/${input.role}/`
+      : `.pi/topology/artifacts/${input.role}/`;
     return {
       decision: "block",
-      reason: `${input.role} is not the default writer role`,
+      reason: `${input.role} is not the default writer role — use topology_write_artifact to write to ${perMissionDir}`,
+      tool_guidance: [
+        `For long reports/decisions, use topology_write_artifact(role=${input.role}, ...) — it routes to ${perMissionDir} and is the only sanctioned ${input.role} write.`,
+        `For short status packets, use topology_send (REPORT/STATUS/VERDICT) — packet bodies are NOT file writes.`,
+        `Project file writes require the repair role; ${input.role} should not edit project files directly.`,
+      ],
       incident: incidentRecord,
     };
   }
@@ -129,6 +168,10 @@ export function evaluateToolCall(input: GuardInput): GuardDecision {
     return {
       decision: "block",
       reason: "write path is outside mission allowed_paths",
+      tool_guidance: [
+        `Only write within mission.allowed_paths.`,
+        `If the path must change, surface this as a scope-expansion owner gate (spec §4.6) — do NOT bypass by writing outside allowed_paths.`,
+      ],
       incident: incidentRecord,
     };
   }
@@ -136,13 +179,28 @@ export function evaluateToolCall(input: GuardInput): GuardDecision {
   return { decision: "allow" };
 }
 
-function isControlledCoordinationWrite(role: GuardRole, filePath: string, allowedPaths: string[]): boolean {
+function isControlledCoordinationWrite(
+  role: GuardRole,
+  filePath: string,
+  allowedPaths: string[],
+  missionId?: string,
+): boolean {
   if (role !== "topology-supervisor" && role !== "hq") return false;
   if (!isPathInsideAllowed(filePath, allowedPaths)) return false;
+  // Per-mission artifacts path (v0.5.1 Slice C): when mission_id is known,
+  // also allow `.pi/topology/missions/<mission_id>/artifacts/<role>/`.
+  const perMissionPrefix = missionId
+    ? `.pi/topology/missions/${missionId}/artifacts/${role}/`
+    : null;
+  // Legacy root mirror: `.pi/topology/artifacts/<role>/` (kept for compat).
+  const legacyPrefix = `.pi/topology/artifacts/${role}/`;
   return allowedPaths.some((allowedPath) => {
     const normalized = relative(allowedPath, filePath).split(sep).join("/");
     if (normalized.startsWith("..") || normalized === "") return false;
-    return normalized.startsWith("docs/") || normalized.startsWith(`.pi/topology/artifacts/${role}/`);
+    if (normalized.startsWith("docs/")) return true;
+    if (normalized.startsWith(legacyPrefix)) return true;
+    if (perMissionPrefix && normalized.startsWith(perMissionPrefix)) return true;
+    return false;
   });
 }
 

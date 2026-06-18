@@ -460,7 +460,7 @@ test("migration: missing sessions.jsonl creates inferred_empty file (per spec §
   }
 });
 
-test("migration: keeps legacy root files intact (non-destructive)", () => {
+test("migration: keeps legacy root files semantically intact (non-destructive on data; v0.5.1 mirror refresh)", () => {
   const ws = makeWorkspace();
   try {
     makeLegacyWorkspace(ws, {
@@ -472,10 +472,18 @@ test("migration: keeps legacy root files intact (non-destructive)", () => {
       has_runtime_events: true,
       has_incident_log: true,
     });
-    const originalCard = readFileSync(join(ws, ROOT_MISSION_CARD_PATH), "utf8");
+    const originalCard = JSON.parse(readFileSync(join(ws, ROOT_MISSION_CARD_PATH), "utf8"));
     const originalSessions = readFileSync(join(ws, ROOT_SESSIONS_PATH), "utf8");
     migrateLegacyToPerMission(ws, { now: NOW });
-    assert.equal(readFileSync(join(ws, ROOT_MISSION_CARD_PATH), "utf8"), originalCard);
+    // v0.5.1: after migrate, the root file becomes a mirror of per-mission
+    // canonical (per spec §3.2 + §12.2). Data fields are preserved; byte
+    // identity may change (trailing newline, formatting) because the mirror
+    // is a re-serialization of per-mission canonical.
+    const mirroredCard = JSON.parse(readFileSync(join(ws, ROOT_MISSION_CARD_PATH), "utf8"));
+    assert.equal(mirroredCard.mission_id, originalCard.mission_id);
+    assert.equal(mirroredCard.objective, originalCard.objective);
+    assert.equal(mirroredCard.allowed_paths?.join(":"), originalCard.allowed_paths?.join(":"));
+    // The sessions.jsonl content is preserved.
     assert.equal(readFileSync(join(ws, ROOT_SESSIONS_PATH), "utf8"), originalSessions);
   } finally {
     rmSync(ws, { recursive: true, force: true });
