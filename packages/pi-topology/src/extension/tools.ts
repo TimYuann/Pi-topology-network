@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { createInitialStatusBoard, createMissionDraft, normalizeMissionCard, runWatchdogCheck, validateMissionCard, type WorkerRole } from "../runtime/mission.ts";
 import { resolveActiveMissionPaths, type ActiveMissionResolution } from "../runtime/active-mission-resolver.ts";
 import { missionPathForWorkspace } from "../runtime/mission-path.ts";
+import { createMissionFlow } from "../runtime/mission-actions.ts";
+import { syncRootMirrorFromLayout } from "../runtime/root-mirror.ts";
 import { createPacket, type PacketType } from "../runtime/packet.ts";
 import { buildRoleLaunchPlan, writeMissionLaunchScripts, writeMissionLaunchScriptsSync, writeRoleLaunchScript } from "../runtime/spawn.ts";
 import { activePendingPackets, applyPacketLifecycle, markMissionProgressForHqLaunch, markRoleLaunchRequested, reconcileBoardWithLiveRegistry, reconcileBoardWithSessionRecords } from "../runtime/status-board.ts";
@@ -60,19 +62,29 @@ export function registerTopologyTools(pi: PiLike): void {
     async execute(_id: string, params: { objective: string; project?: string; allowed_paths: string[] }, _signal: unknown, _onUpdate: unknown, ctx: ToolContext) {
       if (!params.allowed_paths?.length) return toolText("allowed_paths must be non-empty.", { ok: false });
       const project = params.project ?? process.env.PI_TOPOLOGY_PROJECT ?? path.basename(ctx.cwd);
-      const mission = createMissionDraft({
-        project,
-        workdir: ctx.cwd,
-        objective: params.objective,
-        allowed_paths: params.allowed_paths,
-      });
-      const missionPath = missionPathFor(ctx.cwd);
-      const statusPath = path.join(ctx.cwd, mission.status_board_path);
-      const eventPath = path.join(ctx.cwd, mission.event_log_path);
-      const sessionLedgerPath = path.join(ctx.cwd, mission.session_ledger_path);
+      // v0.5.1.5: clean workspace init goes through the canonical
+      // createMissionFlow (per-mission layout + registry + active pointer +
+      // mirror sync). Legacy root-only paths are deprecated.
+      let created: ReturnType<typeof createMissionFlow>;
+      try {
+        created = createMissionFlow(ctx.cwd, {
+          project,
+          workdir: ctx.cwd,
+          objective: params.objective,
+          allowed_paths: params.allowed_paths,
+          title: params.objective,
+          actor: "owner",
+        });
+      } catch (err) {
+        return toolText(
+          `Topology mission init failed: ${(err as Error).message ?? String(err)}`,
+          { ok: false, error: (err as Error).message ?? String(err) },
+        );
+      }
+      const mission = created.missionCard;
+      const layout = created.layout;
+      const missionPath = layout.missionCardPath;
       const packageRoot = resolvePackageRoot();
-      writeJson(missionPath, mission);
-      writeJson(statusPath, createInitialStatusBoard(mission));
       const launchScripts = await writeMissionLaunchScripts(mission, {
         packageRoot,
         missionPath,
@@ -80,24 +92,32 @@ export function registerTopologyTools(pi: PiLike): void {
         provider: "minimax-cn",
         model: "MiniMax-M3",
         thinking: "low",
+        launchDir: layout.launchDir,
+        perMissionEnv: {
+          missionCardPath: layout.missionCardPath,
+          statusBoardPath: layout.statusBoardPath,
+          eventLogPath: layout.runtimeEventsPath,
+          incidentLogPath: layout.incidentLogPath,
+          sessionsPath: layout.sessionsPath,
+        },
       });
-      await appendEvent(eventPath, {
+      await appendEvent(layout.runtimeEventsPath, {
         event_type: "runtime_boot",
         mission_id: mission.mission_id,
         project,
         evidence: { transport: ["topology_init_mission"], business: [], inference: [] },
       });
-      await appendEvent(eventPath, {
+      await appendEvent(layout.runtimeEventsPath, {
         event_type: "mission_initialized",
         mission_id: mission.mission_id,
         mission_path: missionPath,
-        status_board_path: statusPath,
-        evidence: { transport: [missionPath, statusPath], business: [params.objective], inference: [] },
+        status_board_path: layout.statusBoardPath,
+        evidence: { transport: [missionPath, layout.statusBoardPath], business: [params.objective], inference: [] },
       });
-      await appendEvent(eventPath, {
+      await appendEvent(layout.runtimeEventsPath, {
         event_type: "launch_scripts_written",
         mission_id: mission.mission_id,
-        launch_dir: path.join(ctx.cwd, ".pi", "topology", "launch"),
+        launch_dir: layout.launchDir,
         roles: launchScripts.map((entry) => entry.role),
         evidence: {
           transport: launchScripts.map((entry) => entry.scriptPath),
@@ -106,7 +126,7 @@ export function registerTopologyTools(pi: PiLike): void {
         },
       });
       for (const entry of launchScripts) {
-        await appendSessionRecord(sessionLedgerPath, {
+        await appendSessionRecord(layout.sessionsPath, {
           mission_id: mission.mission_id,
           project,
           role: entry.role,
@@ -118,13 +138,16 @@ export function registerTopologyTools(pi: PiLike): void {
           model: "MiniMax-M3",
           thinking: "low",
           evidence: {
-            transport: [entry.scriptPath, sessionLedgerPath],
+            transport: [entry.scriptPath, layout.sessionsPath],
             business: [`${entry.role} launch script generated`],
             inference: ["script_written is not proof that the role session is alive"],
           },
         });
       }
       ctx.ui?.notify?.(`Topology mission initialized: ${mission.mission_id}`, "info");
+      // v0.5.1.5: refresh root mirror so legacy readers see the launch-script
+      // session records under .pi/topology/sessions.jsonl.
+      syncRootMirrorFromLayout(ctx.cwd, layout);
       const supervisor = launchScripts.find((entry) => entry.role === "topology-supervisor");
       return toolText(
         [
@@ -132,9 +155,9 @@ export function registerTopologyTools(pi: PiLike): void {
           missionPath,
           "",
           "Supervisor entry:",
-          supervisor?.launchCommand ?? path.join(ctx.cwd, ".pi", "topology", "launch", "topology-supervisor.sh"),
+          supervisor?.launchCommand ?? path.join(layout.launchDir, "topology-supervisor.sh"),
         ].join("\n"),
-        { ok: true, mission, missionPath, launchScripts },
+        { ok: true, mission, missionPath, launchScripts, layout: { missionDir: layout.missionDirRelative, launchDir: layout.launchDir } },
       );
     },
   });
@@ -573,7 +596,7 @@ export function registerTopologyTools(pi: PiLike): void {
   pi.registerTool({
     name: "topology_write_artifact",
     label: "Topology Write Artifact",
-    description: "Write a role report/review artifact under .pi/topology/artifacts/<role>/ and return its relative path for compact topology_send payloads.",
+    description: "Write a role report/review artifact. Routes to missions/<active-mission-id>/artifacts/<role>/... in per-mission workspaces; falls back to root .pi/topology/artifacts/<role>/ in legacy single-Mission mode.",
     promptSnippet: "Write a long topology report into an artifact file and return artifact_path",
     promptGuidelines: [
       "Use for long reports instead of putting verbose prose directly into topology_send bodies.",
@@ -648,7 +671,7 @@ export function registerTopologyTools(pi: PiLike): void {
   pi.registerTool({
     name: "topology_read_artifact",
     label: "Topology Read Artifact",
-    description: "Read a role report/review artifact from .pi/topology/artifacts/. Use this for artifact_path values received in topology_send packets instead of generic file reads.",
+    description: "Read a role report/review artifact. Reads from missions/<active-mission-id>/artifacts/... in per-mission workspaces; falls back to root .pi/topology/artifacts/... in legacy single-Mission mode.",
     promptSnippet: "Read a topology artifact referenced by artifact_path",
     promptGuidelines: [
       "Prefer this over generic file reads when a packet provides artifact_path.",
@@ -1025,7 +1048,7 @@ function countJsonl(file: string): number {
   return readJsonl(file).length;
 }
 
-function resolveRoleLogPath(cwd: string, role: WorkerRole, requestedPath?: string): string {
+export function resolveRoleLogPath(cwd: string, role: WorkerRole, requestedPath?: string): string {
   const defaultPath = path.join(cwd, ".pi", "topology", `${role}.log`);
   if (!requestedPath?.trim()) return defaultPath;
   const resolved = path.resolve(cwd, requestedPath);

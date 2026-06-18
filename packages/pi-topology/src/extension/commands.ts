@@ -7,6 +7,7 @@ import { missionPathForWorkspace } from "../runtime/mission-path.ts";
 import { resolveActiveMissionPaths } from "../runtime/active-mission-resolver.ts";
 import { activePendingPackets, reconcileBoardWithLiveRegistry, reconcileBoardWithSessionRecords } from "../runtime/status-board.ts";
 import { buildRoleLaunchPlan, writeMissionLaunchScriptsSync, writeRoleLaunchScript } from "../runtime/spawn.ts";
+import { resolveRoleLogPath } from "./tools.ts";
 import { markMissionProgressForHqLaunch, markRoleLaunchRequested } from "../runtime/status-board.ts";
 import { missionLayoutPaths, type MissionLayoutPaths } from "../runtime/mission-layout.ts";
 import { appendEventSync } from "../state/event-log.ts";
@@ -20,6 +21,8 @@ import {
   migrateLegacyToPerMission,
   readLegacyMissionData,
 } from "../runtime/migration.ts";
+import { createMissionFlow, type CreateMissionResult } from "../runtime/mission-actions.ts";
+import { syncRootMirrorFromLayout } from "../runtime/root-mirror.ts";
 import { spawn } from "node:child_process";
 
 interface PiLike {
@@ -316,53 +319,67 @@ async function initMission(cwd: string, objective: string, ctx: CommandContext, 
     return resumeExistingMission(cwd, state.mission, ctx, hooks);
   }
 
+  // v0.5.1.5: clean workspace init goes through the canonical
+  // createMissionFlow (per-mission layout + registry + active pointer +
+  // mirror sync). Legacy root-only paths are deprecated; new code never
+  // writes them outside of migrate.
   const project = hooks.projectName?.() ?? process.env.PI_TOPOLOGY_PROJECT ?? path.basename(cwd);
-  const mission = createMissionDraft({
-    project,
-    workdir: cwd,
-    objective,
-    allowed_paths: [cwd],
-    source: options.source ?? "manual",
-    source_entry_id: options.source_entry_id,
-  });
-  mission.progress = {
-    ...mission.progress,
-    current_step: "Current session is topology-supervisor; waiting for owner confirmation before dynamic role spawn.",
-    completed_steps: unique([...mission.progress.completed_steps, "start_topology_supervisor"]),
-    pending_steps: mission.progress.pending_steps.filter((step) => step !== "start_topology_supervisor"),
-  };
-  const missionPath = missionPathFor(cwd);
-  const statusPath = path.join(cwd, mission.status_board_path);
-  const eventPath = path.join(cwd, mission.event_log_path);
-  const sessionLedgerPath = path.join(cwd, mission.session_ledger_path);
+  let created: CreateMissionResult;
+  try {
+    created = createMissionFlow(cwd, {
+      project,
+      workdir: cwd,
+      objective,
+      allowed_paths: [cwd],
+      source: options.source ?? "manual",
+      source_entry_id: options.source_entry_id,
+      title: objective,
+      actor: "owner",
+    });
+  } catch (err) {
+    return [
+      "Topology init failed",
+      "",
+      String((err as Error).message ?? err),
+    ].join("\n");
+  }
+
+  const mission = created.missionCard;
+  const layout = created.layout;
   const packageRoot = resolvePackageRoot();
-  writeJson(missionPath, mission);
-  writeJson(statusPath, createInitialStatusBoard(mission));
   const launchScripts = writeMissionLaunchScriptsSync(mission, {
     packageRoot,
-    missionPath,
+    missionPath: layout.missionCardPath,
     registryRoot: process.env.PI_COMS_DIR ?? path.join("/tmp", `pi-topology-${mission.project}`),
     provider: "minimax-cn",
     model: "MiniMax-M3",
     thinking: "low",
+    launchDir: layout.launchDir,
+    perMissionEnv: {
+      missionCardPath: layout.missionCardPath,
+      statusBoardPath: layout.statusBoardPath,
+      eventLogPath: layout.runtimeEventsPath,
+      incidentLogPath: layout.incidentLogPath,
+      sessionsPath: layout.sessionsPath,
+    },
   });
-  appendEventSync(eventPath, {
+  appendEventSync(layout.runtimeEventsPath, {
     event_type: "runtime_boot",
     mission_id: mission.mission_id,
     project,
     evidence: { transport: ["/topology"], business: [], inference: [] },
   });
-  appendEventSync(eventPath, {
+  appendEventSync(layout.runtimeEventsPath, {
     event_type: "mission_initialized",
     mission_id: mission.mission_id,
-    mission_path: missionPath,
-    status_board_path: statusPath,
-    evidence: { transport: [missionPath, statusPath], business: [objective], inference: [] },
+    mission_path: layout.missionCardPath,
+    status_board_path: layout.statusBoardPath,
+    evidence: { transport: [layout.missionCardPath, layout.statusBoardPath], business: [objective], inference: [] },
   });
-  appendEventSync(eventPath, {
+  appendEventSync(layout.runtimeEventsPath, {
     event_type: "launch_scripts_written",
     mission_id: mission.mission_id,
-    launch_dir: path.join(cwd, ".pi", "topology", "launch"),
+    launch_dir: layout.launchDir,
     roles: launchScripts.map((entry) => entry.role),
     evidence: {
       transport: launchScripts.map((entry) => entry.scriptPath),
@@ -371,7 +388,7 @@ async function initMission(cwd: string, objective: string, ctx: CommandContext, 
     },
   });
   for (const entry of launchScripts) {
-    appendSessionRecordSync(sessionLedgerPath, {
+    appendSessionRecordSync(layout.sessionsPath, {
       mission_id: mission.mission_id,
       project,
       role: entry.role,
@@ -383,7 +400,7 @@ async function initMission(cwd: string, objective: string, ctx: CommandContext, 
       model: "MiniMax-M3",
       thinking: "low",
       evidence: {
-        transport: [entry.scriptPath, sessionLedgerPath],
+        transport: [entry.scriptPath, layout.sessionsPath],
         business: [`${entry.role} launch script generated`],
         inference: ["script_written is not proof that the role session is alive"],
       },
@@ -393,6 +410,10 @@ async function initMission(cwd: string, objective: string, ctx: CommandContext, 
   const activation = hooks.activateSupervisor
     ? await hooks.activateSupervisor(mission, ctx)
     : null;
+  // v0.5.1.5: refresh root mirror after launch scripts and supervisor
+  // activation so root .pi/topology/* files reflect per-mission canonical
+  // (this is the "compatibility checkpoints" contract from spec §3.2).
+  syncRootMirrorFromLayout(cwd, layout);
   const supervisor = launchScripts.find((entry) => entry.role === "topology-supervisor");
 
   return [
@@ -414,11 +435,12 @@ async function initMission(cwd: string, objective: string, ctx: CommandContext, 
       : "2. Launch the Supervisor entry session:",
     activation
       ? "3. Supervisor will ask for owner approval before using the generated role scripts."
-      : supervisor?.launchCommand ?? currentTerminalCommand(cwd, path.join(cwd, ".pi/topology/launch/topology-supervisor.sh")),
+      : supervisor?.launchCommand ?? currentTerminalCommand(cwd, path.join(layout.launchDir, "topology-supervisor.sh")),
     ...(activation ? [] : ["3. Supervisor will ask for owner approval before using the generated role scripts."]),
     "",
-    `launch_dir: ${path.join(cwd, ".pi", "topology", "launch")}`,
-    `session_ledger: ${sessionLedgerPath}`,
+    `launch_dir: ${layout.launchDir}`,
+    `mission_dir: ${layout.missionDirRelative}`,
+    `session_ledger: ${layout.sessionsPath}`,
   ].join("\n");
 }
 
@@ -557,19 +579,49 @@ async function launchRoleFromSupervisor(
   state: ReturnType<typeof loadTopologyState>,
   role: "hq" | "repair" | "runner" | "oracle" | "librarian" | "scott",
 ): Promise<string> {
-  const safeLogPath = path.join(state.mission.workdir, ".pi", "topology", `${role}.log`);
+  // v0.5.1.5: slash-command spawn honors per-mission canonical the same way
+  // as the topology_spawn_role tool. Resolve the active Mission and use
+  // per-mission launchDir + per-mission env vars.
+  const res = resolveActiveMissionPaths(state.mission.workdir);
+  const isPerMission = res.mode === "per-mission";
+  const launchDir = isPerMission ? res.launchDir ?? undefined : undefined;
+  const perMissionEnv = isPerMission && res.missionCardPath && res.statusBoardPath
+    && res.eventLogPath && res.incidentLogPath && res.sessionsPath
+    ? {
+      missionCardPath: res.missionCardPath,
+      statusBoardPath: res.statusBoardPath,
+      eventLogPath: res.eventLogPath,
+      incidentLogPath: res.incidentLogPath,
+      sessionsPath: res.sessionsPath,
+    }
+    : undefined;
+  const statusPath = isPerMission && res.statusBoardPath
+    ? res.statusBoardPath
+    : state.statusPath;
+  const sessionLedgerPath = isPerMission && res.sessionsPath
+    ? res.sessionsPath
+    : state.sessionLedgerPath;
+  const eventLogPath = isPerMission && res.eventLogPath
+    ? res.eventLogPath
+    : state.eventPath;
+  // Log path: per-mission when applicable, else root log path.
+  const defaultLogPath = isPerMission && res.launchDir
+    ? path.join(res.launchDir, `${role}.log`)
+    : path.join(state.mission.workdir, ".pi", "topology", `${role}.log`);
+  const safeLogPath = resolveRoleLogPath(state.mission.workdir, role, defaultLogPath) ?? defaultLogPath;
   const registryRoot = localTransportRoot(state.mission.project);
   const packageRoot = resolvePackageRoot();
   const plan = buildRoleLaunchPlan(state.mission, role, {
     packageRoot,
-    missionPath: state.missionPath,
+    missionPath: isPerMission && res.missionCardPath ? res.missionCardPath : state.missionPath,
     registryRoot,
     provider: "minimax-cn",
     model: "MiniMax-M3",
     thinking: "low",
+    perMissionEnv,
   });
-  const scriptPath = await writeRoleLaunchScript(state.mission.workdir, plan, { logPath: safeLogPath });
-  appendSessionRecordSync(state.sessionLedgerPath, {
+  const scriptPath = await writeRoleLaunchScript(state.mission.workdir, plan, { logPath: safeLogPath, launchDir });
+  appendSessionRecordSync(sessionLedgerPath, {
     mission_id: state.mission.mission_id,
     project: state.mission.project,
     role,
@@ -584,7 +636,7 @@ async function launchRoleFromSupervisor(
     model: "MiniMax-M3",
     thinking: "low",
     evidence: {
-      transport: [scriptPath, state.sessionLedgerPath],
+      transport: [scriptPath, sessionLedgerPath],
       business: [`${role} launch command issued from /topology spawn ${role}`],
       inference: [
         "launch_command_issued means the terminal open command was issued; session_id remains null until the new role session proves alive via registry/heartbeat",
@@ -596,11 +648,12 @@ async function launchRoleFromSupervisor(
     scriptPath,
     logPath: safeLogPath,
   });
-  writeJson(state.statusPath, nextBoard);
+  writeJson(statusPath, nextBoard);
   if (role === "hq") {
-    writeJson(state.missionPath, markMissionProgressForHqLaunch(state.mission));
+    const missionCardPath = isPerMission && res.missionCardPath ? res.missionCardPath : state.missionPath;
+    writeJson(missionCardPath, markMissionProgressForHqLaunch(state.mission));
   }
-  appendEventSync(state.eventPath, {
+  appendEventSync(eventLogPath, {
     event_type: "spawn_request",
     mission_id: state.mission.mission_id,
     role,

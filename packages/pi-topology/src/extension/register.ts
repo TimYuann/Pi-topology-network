@@ -98,7 +98,10 @@ export function registerPiTopology(pi: PiLike): void {
         evidence: {
           transport: [mission.incident_log_path].filter(Boolean),
           business: [toolName],
-          inference: [decision.reason ? [decision.reason] : [], ...(decision.tool_guidance ?? [])],
+          // v0.5.1.5: flat string array. JSON-serialized evidence.inference
+          // was previously `[[reason], ...guidance]` (a nested array); flatten
+          // so downstream readers see a uniform `string[]`.
+          inference: [decision.reason, ...(decision.tool_guidance ?? [])].filter(Boolean) as string[],
         },
       });
     }

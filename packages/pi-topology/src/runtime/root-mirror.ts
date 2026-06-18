@@ -7,12 +7,15 @@ import type { MissionLayoutPaths } from "./mission-layout.ts";
  *
  * Spec reference: `docs/14-pi-topology-mission-runtime-spec.md` §3.2 + §12.2
  *
- * v0.5.1 update: root `.pi/topology/*` files are ALWAYS compatibility mirrors
- * of the active Mission (or legacy fallback in single-Mission mode). The root
- * is NEVER a second source of truth. All runtime writes go to per-mission
- * canonical paths via the active-mission-resolver; root mirror is updated
- * passively by `syncRootMirrorFromLayout` (called by `migrateLegacyToPerMission`
- * and other slice entry points).
+ * v0.5.1.5 update: the mirror is refreshed ONLY at compatibility
+ * checkpoints (see `docs/14-pi-topology-mission-runtime-spec.md` §3.2):
+ *   - end of `migrateLegacyToPerMission`
+ *   - `setActiveMissionFull` (active pointer changes)
+ *   - `/topology init` and `topology_init_mission` after launch scripts
+ * The root is NEVER a second source of truth. All runtime writes go to
+ * per-mission canonical paths via the active-mission-resolver; root
+ * mirror is updated passively by `syncRootMirrorFromLayout` at those
+ * checkpoints only. Tool calls do NOT refresh the root mirror.
  *
  * What gets mirrored:
  *   - mission-card.json

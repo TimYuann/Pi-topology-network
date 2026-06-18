@@ -98,10 +98,11 @@ export function compactStatusLine(snapshot: TopologyUiSnapshot): string {
 export function buildTopologyUiSnapshot(cwd: string, currentRole = process.env.PI_TOPOLOGY_ROLE ?? process.env.PI_TOPOLOGY_CNAME ?? "unknown"): TopologyUiSnapshot {
   // v0.5.1 Slice D: use the active Mission resolver to pick per-mission
   // canonical paths; fall back to legacy root paths when no registry exists.
+  // v0.5.1.5: the resolver already honors PI_TOPOLOGY_MISSION_CARD for the
+  // role child-session case (env override points inside cwd + file exists),
+  // so the UI no longer re-prioritizes the env var on top of the resolver.
   const res = resolveActiveMissionPaths(cwd);
-  const envCard = process.env.PI_TOPOLOGY_MISSION_CARD;
-  const missionPath = envCard
-    ?? res.missionCardPath
+  const missionPath = res.missionCardPath
     ?? path.join(cwd, ".pi", "topology", "mission-card.json");
   const mission = readJson<MissionCard>(missionPath);
   const project = mission?.project ?? res.project ?? process.env.PI_TOPOLOGY_PROJECT ?? path.basename(cwd);

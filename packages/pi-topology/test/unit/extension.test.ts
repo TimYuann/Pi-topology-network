@@ -9,6 +9,37 @@ import { createInitialStatusBoard, createMissionDraft } from "../../src/runtime/
 import { clearPacketMemory } from "../../src/state/packet-memory.ts";
 import { topology_send } from "../../src/transport/local-coms.ts";
 import { writePeerRegistry } from "../../src/transport/registry.ts";
+import { readActiveMissionPointer } from "../../src/runtime/mission-pointer.ts";
+import { missionLayoutPaths } from "../../src/runtime/mission-layout.ts";
+
+/**
+ * v0.5.1.5: return the per-mission canonical sub-paths for a cwd whose
+ * active Mission has been initialized via `topology_init_mission` or
+ * `/topology init`. The previous tests assumed root legacy layout; the
+ * new contract reads per-mission canonical.
+ */
+async function perMissionPaths(cwd: string): Promise<{
+  missionCard: string;
+  statusBoard: string;
+  runtimeEvents: string;
+  incidentLog: string;
+  sessions: string;
+  launchDir: string;
+  artifactsDir: string;
+}> {
+  const pointer = readActiveMissionPointer(cwd);
+  if (!pointer) throw new Error(`perMissionPaths: no active-mission.json in ${cwd}`);
+  const layout = missionLayoutPaths(cwd, pointer.mission_id);
+  return {
+    missionCard: layout.missionCardPath,
+    statusBoard: layout.statusBoardPath,
+    runtimeEvents: layout.runtimeEventsPath,
+    incidentLog: layout.incidentLogPath,
+    sessions: layout.sessionsPath,
+    launchDir: layout.launchDir,
+    artifactsDir: layout.artifactsDir,
+  };
+}
 
 test("registers minimal Pi topology tool and command surface", () => {
   const tools: Array<{ name: string; promptSnippet?: string; promptGuidelines?: string[] }> = [];
@@ -183,12 +214,12 @@ test("topology slash command preflights and initializes a mission from a task ca
   assert.doesNotMatch(initialized, /Launch the Supervisor entry session/);
   assert.equal(sentMessages.some((message) => message.customType === "topology-supervisor-bootstrap"), true);
 
-  const mission = JSON.parse(await readFile(join(cwd, ".pi/topology/mission-card.json"), "utf8"));
+  const perM = await perMissionPaths(cwd);
+  const mission = JSON.parse(await readFile(perM.missionCard, "utf8"));
   assert.equal(mission.objective, "Stabilize package startup flow");
   assert.deepEqual(mission.allowed_paths, [cwd]);
-  assert.equal(mission.session_ledger_path, ".pi/topology/sessions.jsonl");
 
-  const sessions = (await readFile(join(cwd, ".pi/topology/sessions.jsonl"), "utf8"))
+  const sessions = (await readFile(perM.sessions, "utf8"))
     .trim()
     .split("\n")
     .map((line) => JSON.parse(line) as { role: string; state: string; session_id: string | null; script_path: string });
@@ -197,18 +228,20 @@ test("topology slash command preflights and initializes a mission from a task ca
   assert.equal(sessions.some((entry) => entry.role === "topology-supervisor" && entry.state === "alive_confirmed" && entry.session_id), true);
   assert.match(sessions.find((entry) => entry.role === "topology-supervisor" && entry.state === "script_written")?.script_path ?? "", /topology-supervisor\.sh/);
 
-  const events = (await readFile(join(cwd, ".pi/topology/runtime-events.jsonl"), "utf8"))
+  const events = (await readFile(perM.runtimeEvents, "utf8"))
     .trim()
     .split("\n")
     .map((line) => JSON.parse(line) as { event_type: string });
-  assert.deepEqual(events.map((event) => event.event_type).slice(0, 3), ["runtime_boot", "mission_initialized", "launch_scripts_written"]);
+  assert.deepEqual(events.map((event) => event.event_type).slice(0, 3), ["mission_created", "mission_selected", "runtime_boot"]);
 
   const status = await commands.topology.handler("status", ctx);
-  assert.match(status, /phase: intake/);
-  assert.match(status, /mission_card:/);
-  assert.match(status, /session_ledger:/);
-  assert.match(status, /session_records: 8/);
-  assert.match(status, /current session is already topology-supervisor/);
+  // v0.5.1.5: clean init via createMissionFlow creates a registry entry;
+  // /topology status now returns dashboard format (active mission detail),
+  // not preflight format.
+  assert.match(status, new RegExp(`mission: ${mission.mission_id}`));
+  assert.match(status, /lifecycle: draft/);
+  assert.match(status, /owner_gate: required/);
+  assert.match(status, new RegExp(`/missions/${mission.mission_id}`));
   assert.doesNotMatch(status, /Launch the Supervisor entry session/);
   assert.doesNotMatch(status, /open -n -a/);
 
@@ -734,7 +767,8 @@ test("topology tools persist runtime events for init, spawn, and packet flow", a
     undefined,
     ctx,
   );
-  const sessionRecords = (await readFile(join(cwd, ".pi/topology/sessions.jsonl"), "utf8"))
+  const perM = await perMissionPaths(cwd);
+  const sessionRecords = (await readFile(perM.sessions, "utf8"))
     .trim()
     .split("\n")
     .map((line) => JSON.parse(line) as { role: string; state: string; session_id: string | null });
@@ -754,14 +788,17 @@ test("topology tools persist runtime events for init, spawn, and packet flow", a
     undefined,
     ctx,
   );
-
-  const events = (await readFile(join(cwd, ".pi/topology/runtime-events.jsonl"), "utf8"))
+  const events = (await readFile(perM.runtimeEvents, "utf8"))
     .trim()
     .split("\n")
     .map((line) => JSON.parse(line) as { event_type: string });
 
+  // v0.5.1.5: createMissionFlow appends `mission_created` + `mission_selected`
+  // BEFORE the initMission handler's runtime_boot/mission_initialized/
+  // launch_scripts_written events. Skip the first 2 to keep the rest of
+  // the assertion (the 7 events this test cares about) stable.
   assert.deepEqual(
-    events.map((event) => event.event_type),
+    events.map((event) => event.event_type).slice(2),
     ["runtime_boot", "mission_initialized", "launch_scripts_written", "spawn_request", "spawn_result", "packet_sent", "packet_received"],
   );
 });
@@ -790,8 +827,9 @@ test("topology tools tolerate malformed session ledger lines", async () => {
     undefined,
     ctx,
   );
+  const perM = await perMissionPaths(cwd);
   await writeFile(
-    join(cwd, ".pi/topology/sessions.jsonl"),
+    perM.sessions,
     [
       JSON.stringify({ role: "topology-supervisor", state: "script_written" }),
       "[topology] launch 2026-06-16T07:03:36Z role=hq",
@@ -848,7 +886,8 @@ test("topology_spawn_role sanitizes unsafe log_path values", async () => {
   assert.doesNotMatch(printed.content[0].text, /--append-system-prompt/);
   assert.equal(Object.hasOwn(printed.details, "plan"), false);
 
-  const sessions = (await readFile(join(cwd, ".pi/topology/sessions.jsonl"), "utf8"))
+  const perM = await perMissionPaths(cwd);
+  const sessions = (await readFile(perM.sessions, "utf8"))
     .trim()
     .split("\n")
     .map((line) => JSON.parse(line) as { role: string; state: string; log_path?: string });
@@ -895,8 +934,14 @@ test("topology_spawn_role ignores caller-supplied provider and model overrides",
     ctx,
   );
 
-  const script = await readFile(join(cwd, ".pi/topology/launch/hq.sh"), "utf8");
-  const sessions = (await readFile(join(cwd, ".pi/topology/sessions.jsonl"), "utf8"))
+  // v0.5.1.5: per-mission workspace writes launch scripts to
+  // missions/<id>/launch/; read from per-mission canonical via
+  // the spawn result's scriptPath detail + per-mission sessions ledger.
+  const perM = await perMissionPaths(cwd);
+  const scriptPath = String(printed.details.scriptPath ?? "");
+  assert.match(scriptPath, /\/missions\/[^/]+\/launch\/hq\.sh/);
+  const script = await readFile(scriptPath, "utf8");
+  const sessions = (await readFile(perM.sessions, "utf8"))
     .trim()
     .split("\n")
     .map((line) => JSON.parse(line) as { role: string; state: string; provider?: string; model?: string; thinking?: string });
@@ -912,7 +957,7 @@ test("topology_spawn_role ignores caller-supplied provider and model overrides",
   assert.equal(hq?.thinking, "low");
 });
 
-test("topology_spawn_role honors spawn mode lock over caller requested launch", async () => {
+ test("topology_spawn_role honors spawn mode lock over caller requested launch", async () => {
   const registered: Record<string, { execute: Function }> = {};
   const pi = {
     registerTool(tool: { name: string; execute: Function }) {
@@ -952,7 +997,10 @@ test("topology_spawn_role honors spawn mode lock over caller requested launch", 
       ctx,
     );
 
-    const events = (await readFile(join(cwd, ".pi/topology/runtime-events.jsonl"), "utf8"))
+    // v0.5.1.5: per-mission workspace writes runtime events to
+    // missions/<id>/runtime-events.jsonl.
+    const perM = await perMissionPaths(cwd);
+    const events = (await readFile(perM.runtimeEvents, "utf8"))
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line) as { event_type: string; mode?: string; launch_requested?: boolean; launch_command_issued?: boolean });
@@ -1019,7 +1067,10 @@ test("topology_send derives request_msg_id from ACK body for lifecycle tracking"
     ctx,
   );
 
-  const board = JSON.parse(await readFile(join(cwd, ".pi/topology/status-board.json"), "utf8"));
+  // v0.5.1.5: per-mission workspace writes status-board to
+  // missions/<id>/status-board.json.
+  const perM = await perMissionPaths(cwd);
+  const board = JSON.parse(await readFile(perM.statusBoard, "utf8"));
   assert.equal(board.pending_packets.length, 1);
   assert.equal(board.pending_packets[0].packet_id, request.details.packet.packet_id);
   assert.equal(board.pending_packets[0].state, "acknowledged");
@@ -1215,7 +1266,10 @@ test("topology_list and topology_get do not duplicate packet_received audit even
       ctx,
     );
 
-    const receiveEvents = (await readFile(join(cwd, ".pi/topology/runtime-events.jsonl"), "utf8"))
+    // v0.5.1.5: per-mission workspace writes runtime events to
+    // missions/<id>/runtime-events.jsonl.
+    const perM = await perMissionPaths(cwd);
+    const receiveEvents = (await readFile(perM.runtimeEvents, "utf8"))
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line) as { event_type: string; packet_id?: string })
@@ -1424,7 +1478,9 @@ test("topology_write_artifact writes role artifacts under mission topology folde
     ctx,
   );
 
-  assert.match(result.details.artifact_path, /^\.pi\/topology\/artifacts\/oracle\//);
+  // v0.5.1.5: per-mission workspace writes artifacts to
+  // missions/<id>/artifacts/<role>/.
+  assert.match(result.details.artifact_path, /^\.pi\/topology\/missions\/[^/]+\/artifacts\/oracle\//);
   const artifact = await readFile(join(cwd, result.details.artifact_path), "utf8");
   assert.match(artifact, /role: oracle/);
   assert.match(artifact, /kind: review/);
@@ -1600,6 +1656,76 @@ test("tool_call guard persists incident and guard_block runtime event", async ()
     restoreEnv("PI_TOPOLOGY_ALLOWED_PATHS", previous.allowed);
     restoreEnv("PI_TOPOLOGY_FORBIDDEN_ACTIONS", previous.forbidden);
     restoreEnv("PI_TOPOLOGY_INCIDENT_LOG", previous.incident);
+    restoreEnv("PI_TOPOLOGY_EVENT_LOG", previous.event);
+    restoreEnv("PI_TOPOLOGY_MISSION_ID", previous.mission);
+  }
+});
+
+test("tool_call guard_block evidence.inference is a flat string array (v0.5.1.5 C3)", async () => {
+  const handlers: Record<string, (...args: unknown[]) => unknown> = {};
+  const pi = {
+    registerTool() {},
+    registerCommand() {},
+    on(name: string, handler: (...args: unknown[]) => unknown) {
+      handlers[name] = handler;
+    },
+    registerFlag() {},
+    getFlag(name: string) {
+      return name === "cname" ? "runner" : undefined;
+    },
+  };
+  const cwd = await mkdtemp(join(tmpdir(), "pi-topology-guard-inference-flat-"));
+  const eventLog = join(cwd, ".pi/topology/runtime-events.jsonl");
+  const previous = {
+    allowed: process.env.PI_TOPOLOGY_ALLOWED_PATHS,
+    forbidden: process.env.PI_TOPOLOGY_FORBIDDEN_ACTIONS,
+    event: process.env.PI_TOPOLOGY_EVENT_LOG,
+    mission: process.env.PI_TOPOLOGY_MISSION_ID,
+  };
+  try {
+    process.env.PI_TOPOLOGY_ALLOWED_PATHS = cwd;
+    // shell command in forbidden_actions triggers GuardDecision with both
+    // reason and tool_guidance populated, so the flat-array concat is
+    // actually exercised.
+    process.env.PI_TOPOLOGY_FORBIDDEN_ACTIONS = "git push";
+    process.env.PI_TOPOLOGY_EVENT_LOG = eventLog;
+    process.env.PI_TOPOLOGY_MISSION_ID = "inference-flat-2026-06-18-001";
+    registerPiTopology(pi);
+
+    const result = await handlers.tool_call({
+      toolName: "bash",
+      input: { command: "git push origin main" },
+    });
+    assert.equal((result as { block: boolean }).block, true);
+
+    const events = (await readFile(eventLog, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as {
+        event_type: string;
+        evidence: { inference: unknown };
+        reason: string;
+        tool_guidance?: string[];
+      });
+    const block = events.find((event) => event.event_type === "guard_block");
+    assert.ok(block, "expected a guard_block event");
+    // evidence.inference must be a flat string array — NOT a nested array.
+    assert.ok(Array.isArray(block.evidence.inference), "evidence.inference must be an array");
+    for (const item of block.evidence.inference) {
+      assert.equal(
+        typeof item,
+        "string",
+        `evidence.inference items must be strings; got ${typeof item}: ${JSON.stringify(item)}`,
+      );
+    }
+    // The reason and tool_guidance strings should all be present in inference.
+    assert.ok(
+      (block.evidence.inference as string[]).includes(block.reason),
+      `inference should contain reason; got ${JSON.stringify(block.evidence.inference)}`,
+    );
+  } finally {
+    restoreEnv("PI_TOPOLOGY_ALLOWED_PATHS", previous.allowed);
+    restoreEnv("PI_TOPOLOGY_FORBIDDEN_ACTIONS", previous.forbidden);
     restoreEnv("PI_TOPOLOGY_EVENT_LOG", previous.event);
     restoreEnv("PI_TOPOLOGY_MISSION_ID", previous.mission);
   }
@@ -1840,17 +1966,19 @@ test("topology spawn hq launches a visible HQ peer session from supervisor", asy
     },
   });
 
-  const missionPath = join(cwd, ".pi/topology/mission-card.json");
-  const mission = JSON.parse(await readFile(missionPath, "utf8"));
+  // v0.5.1.5: per-mission workspace; update per-mission canonical mission
+  // card and status board (not the root mirror) so the next handler call
+  // sees owner_required=false.
+  const perM = await perMissionPaths(cwd);
+  const mission = JSON.parse(await readFile(perM.missionCard, "utf8"));
   mission.progress.status = "running";
   mission.progress.current_step = "Owner approved mission; HQ launch ready.";
   mission.progress.completed_steps = [...new Set([...(mission.progress.completed_steps ?? []), "owner_confirm_mission"])];
-  await writeFile(missionPath, `${JSON.stringify(mission, null, 2)}\n`, "utf8");
-  const statusPath = join(cwd, ".pi/topology/status-board.json");
-  const board = JSON.parse(await readFile(statusPath, "utf8"));
+  await writeFile(perM.missionCard, `${JSON.stringify(mission, null, 2)}\n`, "utf8");
+  const board = JSON.parse(await readFile(perM.statusBoard, "utf8"));
   board.runtime_phase = "approved";
   board.next_gate = { type: "none", owner_required: false, reason: "Mission approved", created_at: new Date().toISOString() };
-  await writeFile(statusPath, `${JSON.stringify(board, null, 2)}\n`, "utf8");
+  await writeFile(perM.statusBoard, `${JSON.stringify(board, null, 2)}\n`, "utf8");
 
   const result = await commands.topology.handler("spawn hq", {
     cwd,
@@ -1866,13 +1994,22 @@ test("topology spawn hq launches a visible HQ peer session from supervisor", asy
 
   assert.match(result, /launch command issued for hq/);
   assert.match(result, /Wait for alive_confirmed\/session_alive evidence or the dashboard\/registry heartbeat before treating the role as live/);
-  const nextBoard = JSON.parse(await readFile(statusPath, "utf8"));
+  // v0.5.1.5: per-mission canonical for status board, sessions, and events.
+  const nextBoard = JSON.parse(await readFile(perM.statusBoard, "utf8"));
   assert.equal(nextBoard.peer_status.hq.state, "launch_requested");
-  const sessions = (await readFile(join(cwd, ".pi/topology/sessions.jsonl"), "utf8")).trim().split("\n");
+  const sessions = (await readFile(perM.sessions, "utf8")).trim().split("\n");
   assert.equal(sessions.some((line) => /"role":"hq"/.test(line) && /"state":"launch_requested"/.test(line)), true);
   assert.equal(sessions.some((line) => /"role":"hq"/.test(line) && /"launch_command_issued":true/.test(line)), true);
-  const events = (await readFile(join(cwd, ".pi/topology/runtime-events.jsonl"), "utf8")).trim().split("\n");
+  const events = (await readFile(perM.runtimeEvents, "utf8")).trim().split("\n");
   assert.equal(events.some((line) => /"event_type":"spawn_result"/.test(line) && /"launch_command_issued":true/.test(line)), true);
+  // v0.5.1.5: the launch script must live in missions/<id>/launch/ and
+  // its env must point to per-mission canonical.
+  const launchScriptPath = join(perM.launchDir, "hq.sh");
+  const launchScript = await readFile(launchScriptPath, "utf8");
+  assert.match(launchScript, new RegExp(`PI_TOPOLOGY_MISSION_CARD=.*missions/${mission.mission_id}/mission-card\\.json`));
+  assert.match(launchScript, new RegExp(`PI_TOPOLOGY_INCIDENT_LOG=.*missions/${mission.mission_id}/incident-log\\.jsonl`));
+  assert.match(launchScript, new RegExp(`PI_TOPOLOGY_STATUS_BOARD=.*missions/${mission.mission_id}/status-board\\.json`));
+  assert.match(launchScript, new RegExp(`PI_TOPOLOGY_SESSIONS_LEDGER=.*missions/${mission.mission_id}/sessions\\.jsonl`));
   restoreEnv("PI_COMS_DIR", previousComsDir);
 });
 

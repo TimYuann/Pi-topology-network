@@ -127,7 +127,15 @@ The root files remain compatibility mirrors for the active Mission during the mi
 
 The canonical per-Mission files live under `.pi/topology/missions/<mission_id>/`.
 
-**v0.5.1 mirror rule (clarification):** Per-mission canonical files under `missions/<mission_id>/` are the **only** source of truth for an active Mission. Root `.pi/topology/*` files are a compatibility mirror maintained passively by `syncRootMirrorFromLayout` (called by `migrateLegacyToPerMission` and on subsequent state changes). All runtime writes (tools, session_start, heartbeat, guard, role launch) MUST go to per-mission canonical paths via the active-Mission resolver (`resolveActiveMissionPaths`); root writes are deprecated and may be removed in v0.6. The `launch/*` and `artifacts/*` mirrors are kept for legacy read fallback only; new code never writes there. During migration, root files may be canonical only when no `mission-registry.json` exists. Once the registry exists, root files must mirror the active Mission and must not be used as the source of truth for archived or inactive Missions.
+**v0.5.1 mirror rule (clarification):** Per-mission canonical files under `missions/<mission_id>/` are the **only** source of truth for an active Mission. Root `.pi/topology/*` files are a compatibility mirror maintained passively by `syncRootMirrorFromLayout` at **compatibility checkpoints** — specifically:
+  - end of `migrateLegacyToPerMission` (per-mission migration)
+  - `setActiveMissionFull` (active pointer changes via `createMissionFlow` or selection)
+  - `/topology init` after launch scripts + supervisor activation
+  - `topology_init_mission` tool after launch scripts
+
+Tool calls (`topology_spawn_role`, `topology_send`, `topology_write_artifact`, `topology_read_artifact`, `topology_await`, `topology_get`, `topology_list`) write per-mission canonical only; the root mirror is **not refreshed after every tool call**. Between two checkpoints, the root mirror may lag the canonical by the latest tool-written events / session records. Code that needs the live state MUST read per-mission canonical paths via the active-Mission resolver (`resolveActiveMissionPaths`); root reads are a compatibility fallback for legacy readers only.
+
+All runtime writes (tools, `session_start`, heartbeat, guard, role launch) MUST go to per-mission canonical paths via the resolver; root writes are deprecated and may be removed in v0.6. The `launch/*` and `artifacts/*` mirrors are kept for legacy read fallback only; new code never writes there. During migration, root files may be canonical only when no `mission-registry.json` exists. Once a registry is present, per-mission is canonical immediately — no grace period for writes.
 
 ### 3.3 Active Mission Pointer
 
