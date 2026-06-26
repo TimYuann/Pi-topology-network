@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/Users/yuantian/Documents/Coding/omp-topology-network"
+ROOT="/Users/yuantian/Documents/Coding/Pi-topology-network"
 PKG="$ROOT/packages/pi-topology"
 RUN_ROOT="${PI_TOPOLOGY_RUN_ROOT:-/tmp/pi-topology-dogfood}"
 WORKDIR="$RUN_ROOT/workdir"

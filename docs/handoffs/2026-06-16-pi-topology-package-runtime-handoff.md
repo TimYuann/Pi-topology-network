@@ -1,7 +1,7 @@
 # Pi Topology Package 运行时交接
 
 日期：2026-06-16
-项目：OMP拓扑网络 / `packages/pi-topology`
+项目：Pi拓扑网络 / `packages/pi-topology`
 交接目的：新开一个 Codex session，继续处理 `pi-topology` 在真实 Pi + Ghostty dogfood 中暴露的运行时问题，重点是 session mesh 稳定性、报告工作流、消息流治理。
 
 ## 1. 当前状态
@@ -9,7 +9,7 @@
 当前 package 已经是可安装、可本地测试的 Pi package：
 
 ```text
-/Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology
+/Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology
 ```
 
 本轮结束时已确认：
@@ -261,10 +261,10 @@ Installed .
 新 session 可以直接读这几个文件：
 
 ```text
-/Users/yuantian/Documents/Coding/omp-topology-network/docs/handoffs/2026-06-16-pi-topology-package-runtime-handoff.md
-/Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology/src/extension/tools.ts
-/Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology/src/extension/ui.ts
-/Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology/src/runtime/spawn.ts
+/Users/yuantian/Documents/Coding/Pi-topology-network/docs/handoffs/2026-06-16-pi-topology-package-runtime-handoff.md
+/Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology/src/extension/tools.ts
+/Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology/src/extension/ui.ts
+/Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology/src/runtime/spawn.ts
 /Users/yuantian/Documents/Coding/ekunCustomsWms/.pi/topology/runtime-events.jsonl
 /Users/yuantian/Documents/Coding/ekunCustomsWms/.pi/topology/sessions.jsonl
 ```

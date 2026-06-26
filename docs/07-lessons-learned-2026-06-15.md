@@ -1,4 +1,4 @@
-# 2026-06-15 OMP 拓扑网络纠偏经验
+# 2026-06-15 Pi 拓扑网络纠偏经验
 
 ## 结论
 
@@ -35,11 +35,11 @@ Pi 启动脚本：
 脚本注入：
 
 ```text
-/Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/omp-topology-network/shared-protocol.md
-/Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/omp-topology-network/<role>.md
+/Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/pi-topology-network/shared-protocol.md
+/Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/pi-topology-network/<role>.md
 ```
 
-因此运行时生效规则以 Pi harness 下 `.pi/agents/omp-topology-network/` 为准，`omp-topology-network/docs/` 为 canonical 经验与审核文档。
+因此运行时生效规则以 Pi harness 下 `.pi/agents/pi-topology-network/` 为准，`Pi-topology-network/docs/` 为 canonical 经验与审核文档。
 
 ## 等待节奏纠偏
 

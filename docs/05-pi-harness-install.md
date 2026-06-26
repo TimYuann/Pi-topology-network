@@ -29,7 +29,7 @@ Pi harness 作为独立 Coding 项目维护：
 /Users/yuantian/Documents/Coding/pi-vs-cc
 ```
 
-它不再放在 `ekunAi` 下，也不再由 OMP拓扑网络项目镜像源码。`ekunAi` 和 `omp-topology-network` 只保留引用、协议和启动说明。
+它不再放在 `ekunAi` 下，也不再由 Pi拓扑网络项目镜像源码。`ekunAi` 和 `Pi-topology-network` 只保留引用、协议和启动说明。
 
 ## 已同步文件
 
@@ -47,10 +47,10 @@ justfile
 - `@mariozechner/pi-tui` -> `@earendil-works/pi-tui`
 - `@sinclair/typebox` -> `typebox`
 
-## 已安装 OMP拓扑网络角色包
+## 已安装 Pi拓扑网络角色包
 
 ```text
-/Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/omp-topology-network/
+/Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/pi-topology-network/
 ├── shared-protocol.md
 ├── governor.md
 ├── hq.md
@@ -94,8 +94,8 @@ cd /Users/yuantian/Documents/Coding/pi-vs-cc
 PI_COMS_DIR=/tmp/pi-topology-ekunAi-topology \
 pi -e extensions/coms.ts -e extensions/minimal.ts -e extensions/theme-cycler.ts \
   --cname hq --project ekunAi-topology \
-  --append-system-prompt .pi/agents/omp-topology-network/shared-protocol.md \
-  --append-system-prompt .pi/agents/omp-topology-network/hq.md
+  --append-system-prompt .pi/agents/pi-topology-network/shared-protocol.md \
+  --append-system-prompt .pi/agents/pi-topology-network/hq.md
 ```
 
 所有角色共享：
@@ -106,12 +106,12 @@ PI_COMS_DIR=/tmp/pi-topology-ekunAi-topology
 
 ## 项目引用
 
-OMP拓扑网络中的 Pi harness 引用入口：
+Pi拓扑网络中的 Pi harness 引用入口：
 
 ```text
-/Users/yuantian/Documents/Coding/omp-topology-network/sources/pi-harness/README.md
+/Users/yuantian/Documents/Coding/Pi-topology-network/sources/pi-harness/README.md
 ```
 
 ## Direct ACK 纪律
 
-Pi 侧沿用 OMP拓扑网络同一套协议：收到入站任务先 direct final text ACK，不用 `coms_send` 回 ACK。`coms_await` timeout 只代表当前等待窗口未收到原消息回复，不代表 peer 没做。
+Pi 侧沿用 Pi拓扑网络同一套协议：收到入站任务先 direct final text ACK，不用 `coms_send` 回 ACK。`coms_await` timeout 只代表当前等待窗口未收到原消息回复，不代表 peer 没做。

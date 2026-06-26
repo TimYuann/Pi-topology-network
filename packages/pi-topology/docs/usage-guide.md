@@ -8,7 +8,7 @@
 
 ## 1. 这个插件解决什么问题
 
-`pi-topology-network` 把 OMP拓扑网络的多 Agent 协作协议落到 Pi 本地运行面。它的目标不是让用户手动复制多段 prompt，而是让一个项目拥有可追踪的 topology runtime：
+`pi-topology-network` 把 Pi拓扑网络的多 Agent 协作协议落到 Pi 本地运行面。它的目标不是让用户手动复制多段 prompt，而是让一个项目拥有可追踪的 topology runtime：
 
 - 每个任务是一个 Mission。
 - 每个 Mission 有自己的状态目录、任务卡、事件、incident、session 索引、packet ledger 和产物区。
@@ -30,7 +30,7 @@
 本地开发包刷新方式：
 
 ```bash
-cd /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology
+cd /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology
 pi install .
 ```
 
@@ -38,7 +38,7 @@ pi install .
 
 ```bash
 PI_COMS_DIR=/tmp/pi-topology-<project> \
-pi -e /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology/index.ts \
+pi -e /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology/index.ts \
   --cname topology-supervisor \
   --project <project>
 ```
@@ -318,28 +318,28 @@ v0.5 支持同一项目下多个 Mission。核心文件：
 本地开发验证：
 
 ```bash
-cd /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology
+cd /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology
 npm run smoke
 ```
 
 狗粮集成测试：
 
 ```bash
-cd /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology
+cd /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology
 npm run dogfood
 ```
 
 权限门禁 smoke：
 
 ```bash
-cd /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology
+cd /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology
 npm run guard-smoke
 ```
 
 刷新本地 Pi package：
 
 ```bash
-cd /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology
+cd /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology
 pi install .
 ```
 

@@ -1,6 +1,6 @@
 # `pi-topology` Pi Package（草案）
 
-本包是 OMP拓扑网络在 Pi 运行面的最小落地版，目标是把 `topology` 运行协议打包为可复用的 Pi package。
+本包是 Pi拓扑网络在 Pi 运行面的最小落地版，目标是把 `topology` 运行协议打包为可复用的 Pi package。
 
 ## 说明（已聚焦到可执行层）
 

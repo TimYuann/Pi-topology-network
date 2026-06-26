@@ -1,7 +1,7 @@
 # Pi Topology Mission Runtime PRD
 
 Date: 2026-06-17
-Project: OMP拓扑网络 / `packages/pi-topology`
+Project: Pi拓扑网络 / `packages/pi-topology`
 Version: 0.5
 Status: accepted implementation contract; M3 PRD review incorporated
 Implementation scope: v0.5 Mission Runtime normalization. Earlier 0.1-0.4 work established the local Pi topology package, launch scripts, role prompts, packet tools, and dogfood stability; v0.5 formalizes the Mission-oriented runtime contract and implementation roadmap.
@@ -17,7 +17,7 @@ The product shape is not "start many agents and hope they coordinate." The desir
 3. Role sessions work from durable project files, not only from chat history.
 4. The Mission can be resumed, reviewed, delivered, archived, or parked without treating stale session history as live evidence.
 
-This keeps the OMP拓扑网络 discipline: visible multi-role work, compact structured communication, clear owner gates, and no hidden permission transfer.
+This keeps the Pi拓扑网络 discipline: visible multi-role work, compact structured communication, clear owner gates, and no hidden permission transfer.
 
 ## 2. Problem
 
@@ -231,7 +231,7 @@ Historical Missions should be discoverable without inflating the active dashboar
 
 ### 5.8 Permission and authority model
 
-The redesign must preserve OMP拓扑网络 role boundaries:
+The redesign must preserve Pi拓扑网络 role boundaries:
 
 - horizontal communication only transfers information, not authority
 - Supervisor and HQ own objective framing, authorization, stop-loss, and final verdict routing

@@ -1,7 +1,7 @@
 # Phase D 一次性开发交接说明
 
 日期：2026-06-15
-项目：OMP 拓扑网络 / `omp-topology-network`
+项目：Pi 拓扑网络 / `Pi-topology-network`
 目标：在本项目中一次性推进到 Phase D，并在睡前启动第一次 8 小时自运行测试。
 
 ## 1. 当前判断
@@ -22,7 +22,7 @@
 Canonical 文档项目：
 
 ```text
-/Users/yuantian/Documents/Coding/omp-topology-network
+/Users/yuantian/Documents/Coding/Pi-topology-network
 ```
 
 Pi harness / 实际启动脚本与 prompt：
@@ -30,7 +30,7 @@ Pi harness / 实际启动脚本与 prompt：
 ```text
 /Users/yuantian/Documents/Coding/pi-vs-cc
 /Users/yuantian/Documents/Coding/pi-vs-cc/scripts/launch-pi-topology-ghostty.sh
-/Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/omp-topology-network/
+/Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/pi-topology-network/
 ```
 
 当前业务项目 workdir：
@@ -53,8 +53,8 @@ Pi harness / 实际启动脚本与 prompt：
 落点：
 
 ```text
-pi-vs-cc/.pi/agents/omp-topology-network/shared-protocol.md
-omp-topology-network/docs/01-shared-communication-policy.md
+pi-vs-cc/.pi/agents/pi-topology-network/shared-protocol.md
+Pi-topology-network/docs/01-shared-communication-policy.md
 ```
 
 ### 3.2 Lifecycle Reply Contract
@@ -359,4 +359,4 @@ cd /Users/yuantian/Documents/Coding/pi-vs-cc
 
 ## 12. 交接给下一位 Codex 的一句话
 
-你要把 OMP 拓扑网络从“固定 5 session 的协议实践”推进到“Phase D 首次 8 小时自运行测试可启动”。重点不是多写 prompt，而是补齐 mission/status/incident/watchdog/supervisor/checklist 这几个 runtime 资产，并确保所有事故都被 gate 吸收。
+你要把 Pi 拓扑网络从“固定 5 session 的协议实践”推进到“Phase D 首次 8 小时自运行测试可启动”。重点不是多写 prompt，而是补齐 mission/status/incident/watchdog/supervisor/checklist 这几个 runtime 资产，并确保所有事故都被 gate 吸收。

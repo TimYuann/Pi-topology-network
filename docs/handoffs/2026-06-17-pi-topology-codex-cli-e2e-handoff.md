@@ -1,7 +1,7 @@
 # Pi Topology Codex CLI E2E Handoff
 
 Date: 2026-06-17
-Project: OMP topology network / `packages/pi-topology`
+Project: Pi topology network / `packages/pi-topology`
 Owner goal: use Codex CLI to run a higher-fidelity local Pi/Ghostty E2E test and then repair only evidence-backed issues.
 
 ## 0. Why this handoff exists
@@ -17,7 +17,7 @@ This handoff is intentionally narrow: do not turn this into a redesign pass unti
 Local git history already tracks the current stabilization work. Start by confirming:
 
 ```bash
-cd /Users/yuantian/Documents/Coding/omp-topology-network
+cd /Users/yuantian/Documents/Coding/Pi-topology-network
 git status --short
 git log --oneline -5
 ```
@@ -74,7 +74,7 @@ These are the next repair candidates, but validate them before editing:
 Use a fresh run root so the current repo mission state is not polluted:
 
 ```bash
-export REPO=/Users/yuantian/Documents/Coding/omp-topology-network
+export REPO=/Users/yuantian/Documents/Coding/Pi-topology-network
 export RUN_ROOT=/tmp/pi-topology-cli-e2e-$(date +%Y%m%d-%H%M%S)
 export PI_TOPOLOGY_RUN_ROOT="$RUN_ROOT"
 export PI_PROVIDER=minimax-cn
@@ -101,7 +101,7 @@ pi list
 Expected: an installed local package entry pointing at:
 
 ```text
-/Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology
+/Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology
 ```
 
 If not installed or stale, ask owner before reinstalling.
@@ -230,7 +230,7 @@ Then commit locally with a concise message. Do not push.
 Use this in Codex CLI:
 
 ```text
-You are working in /Users/yuantian/Documents/Coding/omp-topology-network.
+You are working in /Users/yuantian/Documents/Coding/Pi-topology-network.
 
 Read docs/handoffs/2026-06-17-pi-topology-codex-cli-e2e-handoff.md completely, then execute it.
 

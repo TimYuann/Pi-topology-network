@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a local, installable Pi package skeleton for OMP拓扑网络 that can initialize mission cards, enforce role/path guards, validate packet-first communication, expose minimal Pi extension tools, and document dogfood/package readiness.
+**Goal:** Build a local, installable Pi package skeleton for Pi拓扑网络 that can initialize mission cards, enforce role/path guards, validate packet-first communication, expose minimal Pi extension tools, and document dogfood/package readiness.
 
 **Architecture:** The package lives under `packages/pi-topology/`. Pi extension registration stays thin and delegates to testable runtime, transport, guard, packet, and state modules. Runtime state is JSON/JSONL so future Web UI and dogfood sessions can replay mission, packet, incident, and health evidence.
 

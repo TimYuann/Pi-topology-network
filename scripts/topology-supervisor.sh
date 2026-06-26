@@ -94,7 +94,7 @@ REGISTRY="${PI_COMS_DIR:-/tmp/pi-topology-${PROJECT}}"
 GHOSTTY_APP_NAME="${GHOSTTY_APP_NAME:-Ghostty}"
 TMP_DIR="${TMPDIR:-/tmp}/pi-topology-supervisor-${PROJECT}"
 mkdir -p "$TMP_DIR"
-SHARED_PROTOCOL="$HARNESS_ROOT/.pi/agents/omp-topology-network/shared-protocol.md"
+SHARED_PROTOCOL="$HARNESS_ROOT/.pi/agents/pi-topology-network/shared-protocol.md"
 COMS_EXT="$HARNESS_ROOT/extensions/coms.ts"
 DAMAGE_EXT="$HARNESS_ROOT/extensions/damage-control-continue.ts"
 THEME_EXT="$HARNESS_ROOT/extensions/theme-cycler.ts"
@@ -107,7 +107,7 @@ done
 
 role_file() {
   case "$1" in
-    hq|repair|runner|oracle) printf "%s/.pi/agents/omp-topology-network/%s.md\n" "$HARNESS_ROOT" "$1" ;;
+    hq|repair|runner|oracle) printf "%s/.pi/agents/pi-topology-network/%s.md\n" "$HARNESS_ROOT" "$1" ;;
     *) echo "unknown role: $1" >&2; exit 2 ;;
   esac
 }

@@ -7,19 +7,19 @@
 当前插件代码位于本仓库：
 
 ```text
-/Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology
+/Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology
 ```
 
 它不是 `~/Documents/Coding` 下另一个独立项目。当前本机 Pi 安装的是这个本地路径 package：
 
 ```text
-../../Documents/Coding/omp-topology-network/packages/pi-topology
+../../Documents/Coding/Pi-topology-network/packages/pi-topology
 ```
 
 本地开发更新后，刷新 Pi 安装使用：
 
 ```bash
-cd /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology
+cd /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology
 pi install .
 ```
 
@@ -52,7 +52,7 @@ Pi 通过 `package.json` 的 `pi` 字段识别本包：
 
 ## 3. 运行模型
 
-本包把 OMP拓扑网络协议落到 Pi 本地运行面。核心设计是：
+本包把 Pi拓扑网络协议落到 Pi 本地运行面。核心设计是：
 
 - owner 优先只输入 `/topology`：已有 mission 时恢复状态；无 mission 时尝试从上一条 assistant 回复识别任务卡。
 - 如果上一条 assistant 回复不是任务卡，owner 可以直接输入 `/topology <任务目标或任务卡>`，不需要再输入 `init`。
@@ -431,7 +431,7 @@ pi list
 ```bash
 PI_TOPOLOGY_RUN_ROOT=/tmp/pi-topology-dogfood-<date> \
 open -na Ghostty.app --args -e \
-/Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology/scripts/ghostty-supervisor-smoke.sh
+/Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology/scripts/ghostty-supervisor-smoke.sh
 ```
 
 脚本默认不会等待 Enter，避免 Ghostty 实例堆积。需要保留窗口时设置：

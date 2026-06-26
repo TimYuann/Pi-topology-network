@@ -3,7 +3,7 @@
 ## 0. 启动前检查
 
 - 明确项目根目录，例如 `/Users/yuantian/Documents/Coding/ekunCustomsWms`。
-- 明确 registry，例如 `/tmp/omp-topology-ekunCustomsWms`。
+- 明确 registry，例如 `/tmp/pi-topology-ekunCustomsWms`。
 - 所有角色使用同一个 registry 和 project name。
 - 启动 prompt 必须包含 `docs/01-shared-communication-policy.md` 的 direct ACK 纪律。
 
@@ -25,11 +25,11 @@ sources/cave/pi-vs-claude-code移植/ports/coms-omp
 
 ```bash
 cd /Users/yuantian/Documents/Coding/<project>
-export OMP_COMS_DIR=/tmp/omp-topology-<project>
+export OMP_COMS_DIR=/tmp/pi-topology-<project>
 
 omp -e /Users/yuantian/.omp/agent/experiments/coms-omp \
   --cname governor \
-  --purpose "Owner-facing governor for OMP拓扑网络" \
+  --purpose "Owner-facing governor for Pi拓扑网络" \
   --project <project>-topology
 ```
 
@@ -66,11 +66,11 @@ Pi 路线当前是本实践的主力 mesh surface。实际启动脚本位于：
 脚本会注入两层 prompt：
 
 ```text
---append-system-prompt /Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/omp-topology-network/shared-protocol.md
---append-system-prompt /Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/omp-topology-network/<role>.md
+--append-system-prompt /Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/pi-topology-network/shared-protocol.md
+--append-system-prompt /Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/pi-topology-network/<role>.md
 ```
 
-因此几轮纠偏后的强约束必须先落在 Pi harness 的 `.pi/agents/omp-topology-network/`，再同步到本项目 `docs/`。
+因此几轮纠偏后的强约束必须先落在 Pi harness 的 `.pi/agents/pi-topology-network/`，再同步到本项目 `docs/`。
 
 推荐 5 session 启动：
 
@@ -166,7 +166,7 @@ pi \
 如果需要先打印下游角色启动命令：
 
 ```bash
-cd /Users/yuantian/Documents/Coding/omp-topology-network
+cd /Users/yuantian/Documents/Coding/Pi-topology-network
 scripts/topology-supervisor.sh --print --mission templates/mission-card.phase-d.json hq runner oracle
 ```
 

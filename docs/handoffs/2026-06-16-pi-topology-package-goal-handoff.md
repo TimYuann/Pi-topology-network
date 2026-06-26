@@ -1,7 +1,7 @@
 # Pi Topology Package 目标模式交接
 
 日期：2026-06-16
-项目：OMP拓扑网络 / `omp-topology-network`
+项目：Pi拓扑网络 / `Pi-topology-network`
 交接目的：新开一个 Codex session，使用目标模式，把当前 topology 从项目内协议/草稿 runtime 推进为成熟 Pi package。
 
 ## 1. 术语说明：狗粮
@@ -86,7 +86,7 @@ topology_send / topology_get / topology_list / topology_status
 本地已克隆：
 
 ```text
-/Users/yuantian/Documents/Coding/omp-topology-network/sources/external/pi-crew
+/Users/yuantian/Documents/Coding/Pi-topology-network/sources/external/pi-crew
 ```
 
 已用 GitNexus 分析过。关键结论：
@@ -394,7 +394,7 @@ packages/pi-topology/
 建议新 session 第一条用户消息可以是：
 
 ```text
-请先阅读 /Users/yuantian/Documents/Coding/omp-topology-network/docs/handoffs/2026-06-16-pi-topology-package-goal-handoff.md，然后开启目标模式，把 topology 正式做成成熟 Pi package。你拥有该 handoff 里列出的权限；遇到 sandbox approval 直接请求，不要反复问我架构方向。
+请先阅读 /Users/yuantian/Documents/Coding/Pi-topology-network/docs/handoffs/2026-06-16-pi-topology-package-goal-handoff.md，然后开启目标模式，把 topology 正式做成成熟 Pi package。你拥有该 handoff 里列出的权限；遇到 sandbox approval 直接请求，不要反复问我架构方向。
 ```
 
 新 session 读完后应先用短 ACK 确认理解，然后直接进入调研和实施。

@@ -1,7 +1,7 @@
 {
   "name": "pi-topology-network",
   "version": "0.5.0",
-  "description": "Pi package for OMP topology network session mesh governance",
+  "description": "Pi package for topology network session mesh governance",
   "license": "MIT",
   "type": "module",
   "keywords": [

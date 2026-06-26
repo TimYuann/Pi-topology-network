@@ -1,6 +1,6 @@
-# OMP拓扑网络
+# Pi拓扑网络
 
-OMP拓扑网络是一个面向多 Agent 协作实践的项目库。它不是只服务 OMP，也不是某一次 ekunAi / ekunCustomsWms 任务的临时记录，而是把已经跑通的 persistent role mesh、direct ACK 纪律、状态机和角色预设沉淀成可审计、可复用的工作协议。
+Pi拓扑网络是一个面向多 Agent 协作实践的项目库。它不是只服务 OMP，也不是某一次 ekunAi / ekunCustomsWms 任务的临时记录，而是把已经跑通的 persistent role mesh、direct ACK 纪律、状态机和角色预设沉淀成可审计、可复用的工作协议。
 
 当前定位：
 

@@ -1,6 +1,6 @@
 # Shared Protocol (Pi Runtime)
 
-This package is **OMP拓扑网络**, but **Pi is the current productization runtime**. Treat OMP as historical/compatibility reference only.
+This package is **Pi拓扑网络**. **Pi is the current productization runtime**. Treat OMP as historical/compatibility reference only.
 
 ## 1) Topology Rule
 

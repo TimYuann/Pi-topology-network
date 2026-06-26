@@ -2,7 +2,7 @@
 
 ```bash
 cd /Users/yuantian/Documents/Coding/<project>
-export OMP_COMS_DIR=/tmp/omp-topology-<project>
+export OMP_COMS_DIR=/tmp/pi-topology-<project>
 export OMP_COMS_EXT=/Users/yuantian/.omp/agent/experiments/coms-omp
 
 omp -e "$OMP_COMS_EXT" --cname governor --purpose "Owner-facing governor. Must direct-ACK inbound messages and dispatch only to hq." --project <project>-topology

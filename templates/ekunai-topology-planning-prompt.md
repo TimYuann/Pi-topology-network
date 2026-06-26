@@ -1,10 +1,10 @@
 # ekunAi Topology Planning Prompt
 
 ```text
-请按 OMP拓扑网络方式规划今天 ekunAi 的任务。
+请按 Pi拓扑网络方式规划今天 ekunAi 的任务。
 
 先读：
-/Users/yuantian/Documents/Coding/omp-topology-network/docs/06-session-bootstrap.md
+/Users/yuantian/Documents/Coding/Pi-topology-network/docs/06-session-bootstrap.md
 
 然后按该文件要求读取 topology docs。
 默认你担任 hq：先做规划和分包，不要先写代码。

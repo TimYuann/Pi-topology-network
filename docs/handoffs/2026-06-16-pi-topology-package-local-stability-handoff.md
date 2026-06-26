@@ -1,7 +1,7 @@
 # Pi Topology Package 本地稳定性目标模式交接
 
 日期：2026-06-16
-项目：OMP拓扑网络 / `packages/pi-topology`
+项目：Pi拓扑网络 / `packages/pi-topology`
 交接目的：新开一个 Codex session，使用目标模式，把当前 Pi topology package 从“已跑通 MVP + 初步 Ghostty dogfood”推进到“明早可本地稳定使用”的状态。
 
 ## 1. 本轮最高目标
@@ -335,18 +335,18 @@ pi list
 3. Supervisor real smoke：
 
 ```bash
-open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology/scripts/ghostty-supervisor-smoke.sh
+open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology/scripts/ghostty-supervisor-smoke.sh
 ```
 
 4. Role real smoke：
 
 ```bash
-open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology/scripts/ghostty-role-smoke.sh hq
-open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology/scripts/ghostty-role-smoke.sh runner
-open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology/scripts/ghostty-role-smoke.sh oracle
-open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology/scripts/ghostty-role-smoke.sh repair
-open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology/scripts/ghostty-role-smoke.sh librarian
-open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology/scripts/ghostty-role-smoke.sh scott
+open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology/scripts/ghostty-role-smoke.sh hq
+open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology/scripts/ghostty-role-smoke.sh runner
+open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology/scripts/ghostty-role-smoke.sh oracle
+open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology/scripts/ghostty-role-smoke.sh repair
+open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology/scripts/ghostty-role-smoke.sh librarian
+open -na Ghostty.app --args -e /Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology/scripts/ghostty-role-smoke.sh scott
 ```
 
 所有脚本应改成 MiniMax M3 + low/off thinking。
@@ -466,7 +466,7 @@ packages/pi-topology/test/integration/
 建议新 session 第一条用户消息：
 
 ```text
-请先阅读 /Users/yuantian/Documents/Coding/omp-topology-network/docs/handoffs/2026-06-16-pi-topology-package-local-stability-handoff.md，然后开启目标模式。你的目标不是 Package Hub 发布，而是让 packages/pi-topology 在本地 Pi + Ghostty 中稳定可用。真实 Pi 测试全部优先使用 MiniMax M3，thinking low 或 off。请适当使用 gpt-5.3-codex-spark subagent 分担探查、批量写入和局部验证，主 session 负责调度、集成和最终判断。请补齐 spawned role 自动落证、local packet 往返、runtime event log、guard 真实 smoke，并扩展 librarian/scott 调研角色。不要在 closeout 里留下本轮未完成项；除非遇到外部不可控阻塞，否则持续修到第 10 节验收门通过。遇到 sandbox/macOS approval 直接请求。
+请先阅读 /Users/yuantian/Documents/Coding/Pi-topology-network/docs/handoffs/2026-06-16-pi-topology-package-local-stability-handoff.md，然后开启目标模式。你的目标不是 Package Hub 发布，而是让 packages/pi-topology 在本地 Pi + Ghostty 中稳定可用。真实 Pi 测试全部优先使用 MiniMax M3，thinking low 或 off。请适当使用 gpt-5.3-codex-spark subagent 分担探查、批量写入和局部验证，主 session 负责调度、集成和最终判断。请补齐 spawned role 自动落证、local packet 往返、runtime event log、guard 真实 smoke，并扩展 librarian/scott 调研角色。不要在 closeout 里留下本轮未完成项；除非遇到外部不可控阻塞，否则持续修到第 10 节验收门通过。遇到 sandbox/macOS approval 直接请求。
 ```
 
 ## 13. 2026-06-16 执行结果
@@ -478,7 +478,7 @@ packages/pi-topology/test/integration/
 - `npm run smoke` 通过：25 个 Node unit tests、strip-types import、`npm pack --dry-run`。
 - `npm run guard-smoke` 通过：8 条 persisted incident + 8 条 `guard_block` runtime event。
 - `pi install .` 通过，输出 `Installed .`。
-- `pi list` 显示本地 package 指向 `/Users/yuantian/Documents/Coding/omp-topology-network/packages/pi-topology`。
+- `pi list` 显示本地 package 指向 `/Users/yuantian/Documents/Coding/Pi-topology-network/packages/pi-topology`。
 - supervisor MiniMax M3 + Ghostty smoke 通过。
 - spawned HQ 通过 `topology_spawn_role(mode=launch)` 启动，并写入同一 mission workdir 的 runtime event 与 local outbox。
 - `hq` / `repair` / `runner` / `oracle` / `librarian` / `scott` 六个角色均有 MiniMax M3 + Ghostty role smoke log。

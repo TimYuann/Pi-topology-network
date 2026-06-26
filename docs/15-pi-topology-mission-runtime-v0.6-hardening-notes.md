@@ -1,7 +1,7 @@
 # Pi Topology Mission Runtime v0.6 Hardening Notes
 
 Date: 2026-06-17
-Project: OMP拓扑网络 / `packages/pi-topology`
+Project: Pi拓扑网络 / `packages/pi-topology`
 Status: forward-looking notes; not a PRD; not an implementation spec
 Depends on: `docs/13-pi-topology-mission-runtime-prd.md` v0.5 and `docs/14-pi-topology-mission-runtime-spec.md` v0.5
 

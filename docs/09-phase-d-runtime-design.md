@@ -37,7 +37,7 @@ Pi runtime / Pi Extension
 Canonical 协议与运行资产：
 
 ```text
-/Users/yuantian/Documents/Coding/omp-topology-network
+/Users/yuantian/Documents/Coding/Pi-topology-network
 ```
 
 OMP 是历史验证和兼容参照，不是 Phase D 主攻面。Phase D 文档、模板和脚本应按 Pi-first 设计；如提到 OMP，只说明兼容或历史证据。

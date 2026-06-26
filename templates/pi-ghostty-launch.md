@@ -78,8 +78,8 @@ The launcher loads:
 /Users/yuantian/Documents/Coding/pi-vs-cc/extensions/minimal.ts
 /Users/yuantian/Documents/Coding/pi-vs-cc/extensions/theme-cycler.ts
 /Users/yuantian/Documents/Coding/pi-vs-cc/extensions/damage-control-continue.ts
-/Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/omp-topology-network/shared-protocol.md
-/Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/omp-topology-network/<role>.md
+/Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/pi-topology-network/shared-protocol.md
+/Users/yuantian/Documents/Coding/pi-vs-cc/.pi/agents/pi-topology-network/<role>.md
 ```
 
 macOS note: Ghostty only receives `-e <command>` reliably when launched as a new app instance, so `--launch` uses `open -n -a Ghostty --args -e <role-script>`. Default mode prints only, so you can inspect commands before launching.

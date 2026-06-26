@@ -10,7 +10,7 @@ if [[ -z "$PROJECT_ROOT" || -z "$PROJECT_NAME" ]]; then
   exit 2
 fi
 
-REGISTRY="/tmp/omp-topology-${PROJECT_NAME}"
+REGISTRY="/tmp/pi-topology-${PROJECT_NAME}"
 
 cat <<OUT
 cd "$PROJECT_ROOT"

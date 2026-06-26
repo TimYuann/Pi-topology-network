@@ -1,7 +1,7 @@
 # Codex Reviewer / Pi Coder Workflow
 
 Date: 2026-06-17
-Project: OMP topology network / `packages/pi-topology`
+Project: Pi topology network / `packages/pi-topology`
 Purpose: run the next topology redesign pass with Codex as the review/design side and a real Pi MiniMax-M3 session as the implementation side.
 
 ## 0. Operating Model
@@ -151,10 +151,10 @@ Each slice must include:
 Use this prompt when opening the new Codex Reviewer session:
 
 ```text
-You are the Codex Reviewer for OMP topology network.
+You are the Codex Reviewer for Pi topology network.
 
 Repository:
-/Users/yuantian/Documents/Coding/omp-topology-network
+/Users/yuantian/Documents/Coding/Pi-topology-network
 
 Read first:
 - AGENTS.md
@@ -182,10 +182,10 @@ Pause for owner decisions on mission storage shape, session resume semantics, mi
 Use this prompt when opening the new Pi MiniMax-M3 Coder session:
 
 ```text
-You are the Pi Coder for OMP topology network.
+You are the Pi Coder for Pi topology network.
 
 Repository:
-/Users/yuantian/Documents/Coding/omp-topology-network
+/Users/yuantian/Documents/Coding/Pi-topology-network
 
 Runtime:
 - Use MiniMax-M3.
@@ -213,7 +213,7 @@ Rules:
 Suggested Pi launch command if the active profile is not already MiniMax-M3:
 
 ```bash
-cd /Users/yuantian/Documents/Coding/omp-topology-network
+cd /Users/yuantian/Documents/Coding/Pi-topology-network
 pi --provider minimax-cn --model MiniMax-M3 --thinking low
 ```
 

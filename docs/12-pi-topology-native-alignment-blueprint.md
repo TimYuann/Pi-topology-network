@@ -1,12 +1,12 @@
 # Pi Topology Native Alignment Blueprint
 
 日期：2026-06-16
-项目：OMP拓扑网络 / `packages/pi-topology`
+项目：Pi拓扑网络 / `packages/pi-topology`
 状态：执行中
 
 ## 目标
 
-在保持 OMP拓扑网络最小可用能力的前提下，把 `pi-topology-network` 从“在 Pi 上再造一层重编排 runtime”收回到“优先复用 Pi 原生 extension / package / UI 能力，同时坚持可见性 Mesh”的轻量实现路径。
+在保持 Pi拓扑网络最小可用能力的前提下，把 `pi-topology-network` 从“在 Pi 上再造一层重编排 runtime”收回到“优先复用 Pi 原生 extension / package / UI 能力，同时坚持可见性 Mesh”的轻量实现路径。
 
 核心目标只有两个：
 

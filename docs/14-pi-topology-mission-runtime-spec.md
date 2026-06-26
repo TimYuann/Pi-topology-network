@@ -1,7 +1,7 @@
 # Pi Topology Mission Runtime Spec
 
 Date: 2026-06-17
-Project: OMP拓扑网络 / `packages/pi-topology`
+Project: Pi拓扑网络 / `packages/pi-topology`
 Version: 0.5
 Status: accepted implementation contract; M3 official-doc review incorporated
 Depends on: `docs/13-pi-topology-mission-runtime-prd.md`
@@ -25,7 +25,7 @@ Official Pi API alignment is intentionally bounded here. This spec labels primit
 - `supported`: already used or verified in local records
 - `pending_api_audit`: must be checked in the next API audit before implementation relies on it
 - `compatibility_target`: desired future alignment, not a current contract
-- `local_protocol`: OMP拓扑网络 file/JSONL protocol layered on top of Pi
+- `local_protocol`: Pi拓扑网络 file/JSONL protocol layered on top of Pi
 - `local_environment_risk`: behavior depends on this Mac or terminal layer, not on Pi core APIs
 
 ## 2. Current Baseline

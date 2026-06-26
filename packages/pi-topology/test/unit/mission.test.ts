@@ -9,7 +9,7 @@ import {
 
 test("creates a valid Pi dynamic-spawn mission draft with an owner gate", () => {
   const draft = createMissionDraft({
-    project: "OMP拓扑网络",
+    project: "Pi拓扑网络",
     workdir: "/work/project",
     objective: "Dogfood Pi topology package",
     allowed_paths: ["/work/project/packages/pi-topology"],
