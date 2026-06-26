@@ -269,6 +269,10 @@ export const RESOURCE_LIFECYCLE_STATES = [
 ] as const;
 export type ResourceLifecycleState =
   (typeof RESOURCE_LIFECYCLE_STATES)[number];
+export type ObservedResourceLifecycleState = Exclude<
+  ResourceLifecycleState,
+  "planned" | "abandoned"
+>;
 
 export const VERIFICATION_STATES = ["verified", "unverified"] as const;
 export type VerificationState = (typeof VERIFICATION_STATES)[number];
@@ -588,12 +592,19 @@ export interface PlannedResource extends ManagedResourceCommon {
   verification_state: "unverified";
 }
 
+export interface AbandonedResource extends ManagedResourceCommon {
+  lifecycle_state: "abandoned";
+  identity: null;
+  identity_digest: null;
+  cleanup_policy: null;
+}
+
 export interface ObservedProcessResource extends ManagedResourceCommon {
   resource_type: "process";
   identity: ProcessIdentity;
   identity_digest: string;
   cleanup_policy: ProcessCleanupPolicy;
-  lifecycle_state: Exclude<ResourceLifecycleState, "planned">;
+  lifecycle_state: ObservedResourceLifecycleState;
 }
 
 export interface ObservedTempDirectoryResource extends ManagedResourceCommon {
@@ -601,11 +612,12 @@ export interface ObservedTempDirectoryResource extends ManagedResourceCommon {
   identity: TempDirectoryIdentity;
   identity_digest: string;
   cleanup_policy: TempDirectoryCleanupPolicy;
-  lifecycle_state: Exclude<ResourceLifecycleState, "planned">;
+  lifecycle_state: ObservedResourceLifecycleState;
 }
 
 export type ManagedResource =
   | PlannedResource
+  | AbandonedResource
   | ObservedProcessResource
   | ObservedTempDirectoryResource;
 

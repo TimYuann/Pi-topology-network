@@ -60,6 +60,7 @@ import {
   type ActionRequest,
   type Actor,
   type ActionAttempt,
+  type AbandonedResource,
   type Authorization,
   type AuthorizationGrant,
   type AuthorizationGrantScope,
@@ -1467,6 +1468,55 @@ export function validatePlannedResource(input: unknown): PlannedResource {
   };
 }
 
+export function validateAbandonedResource(input: unknown): AbandonedResource {
+  const obj = validateObject(input, "AbandonedResource");
+  rejectAdditionalProperties(obj, MANAGED_RESOURCE_KEYS, "AbandonedResource");
+  const common = parseManagedResourceCommonFields(obj, "AbandonedResource");
+  const resource_type = validateEnum(
+    obj.resource_type,
+    "AbandonedResource.resource_type",
+    RESOURCE_TYPES,
+  );
+  const lifecycle_state = validateEnum(
+    obj.lifecycle_state,
+    "AbandonedResource.lifecycle_state",
+    RESOURCE_LIFECYCLE_STATES,
+  );
+  if (lifecycle_state !== "abandoned") {
+    throw new Foundation0ValidationError(
+      `AbandonedResource.lifecycle_state must be "abandoned", got "${lifecycle_state}"`,
+    );
+  }
+  if (obj.identity !== null) {
+    throw new Foundation0ValidationError(
+      "AbandonedResource.identity must be null when lifecycle_state=abandoned",
+    );
+  }
+  if (obj.identity_digest !== null) {
+    throw new Foundation0ValidationError(
+      "AbandonedResource.identity_digest must be null when lifecycle_state=abandoned",
+    );
+  }
+  if (obj.cleanup_policy !== null) {
+    throw new Foundation0ValidationError(
+      "AbandonedResource.cleanup_policy must be null when lifecycle_state=abandoned",
+    );
+  }
+  return {
+    ...common,
+    resource_type,
+    lifecycle_state: "abandoned",
+    verification_state: validateEnum(
+      obj.verification_state,
+      "AbandonedResource.verification_state",
+      VERIFICATION_STATES,
+    ),
+    identity: null,
+    identity_digest: null,
+    cleanup_policy: null,
+  };
+}
+
 export function validateObservedProcessResource(
   input: unknown,
 ): ObservedProcessResource {
@@ -1487,6 +1537,11 @@ export function validateObservedProcessResource(
   if (lifecycle_state === "planned") {
     throw new Foundation0ValidationError(
       `ObservedProcessResource.lifecycle_state must not be "planned", got "${lifecycle_state}"`,
+    );
+  }
+  if (lifecycle_state === "abandoned") {
+    throw new Foundation0ValidationError(
+      `ObservedProcessResource.lifecycle_state must not be "abandoned", got "${lifecycle_state}"`,
     );
   }
   if (obj.identity === undefined || obj.identity === null) {
@@ -1549,6 +1604,11 @@ export function validateObservedTempDirectoryResource(
       `ObservedTempDirectoryResource.lifecycle_state must not be "planned", got "${lifecycle_state}"`,
     );
   }
+  if (lifecycle_state === "abandoned") {
+    throw new Foundation0ValidationError(
+      `ObservedTempDirectoryResource.lifecycle_state must not be "abandoned", got "${lifecycle_state}"`,
+    );
+  }
   if (obj.identity === undefined || obj.identity === null) {
     throw new Foundation0ValidationError(
       `ObservedTempDirectoryResource.identity must be present when lifecycle_state is "${lifecycle_state}" (test 21)`,
@@ -1589,6 +1649,9 @@ export function validateManagedResource(input: unknown): ManagedResource {
   const lifecycle_state = obj.lifecycle_state;
   if (lifecycle_state === "planned") {
     return validatePlannedResource(obj);
+  }
+  if (lifecycle_state === "abandoned") {
+    return validateAbandonedResource(obj);
   }
   if (resource_type === "process") {
     return validateObservedProcessResource(obj);
