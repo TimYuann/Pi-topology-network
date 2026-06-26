@@ -203,7 +203,7 @@ All ActionRequests include:
   "actor_id": "actor_...",
   "authorization_id": "auth_...",
   "idempotency_key": "idem_...",
-  "payload_ref": "mission:mission_.../artifacts/runtime/payloads/action_....json",
+  "payload_ref": "foundation0/payloads/<payload_digest>.json",
   "payload_digest": "sha256:...",
   "effect_fingerprint": "sha256:...",
   "retry_of_action_id": null,
@@ -342,6 +342,7 @@ Each event type MUST define which references are required:
 Rules:
 
 - Referenced payload content MUST be durably written and digest-verified before the event that references it is durably appended.
+- Foundation-0 canonical payload refs use `foundation0/payloads/<payload_digest>.json` under the mission's `foundation0/` storage root.
 - InitialOutcome MUST be durably committed before reporting any terminal result to the caller: `succeeded`, `failed`, `skipped`, or `indeterminate`.
 - Missing payload or digest mismatch MUST produce reconciliation or unsupported-schema evidence, not a successful projection.
 

@@ -21,6 +21,7 @@ import {
   ACTOR_ROLES,
   ACTOR_STATUSES,
   ACTION_PAYLOAD_KINDS,
+  ABANDONED_RESOURCE_REASONS,
   CAPABILITIES,
   CLEANUP_METHODS,
   CLOSEOUT_DISPOSITIONS,
@@ -47,6 +48,7 @@ import {
   RECONCILIATION_RESOLUTIONS,
   REGISTER_RESOURCE_OUTCOME_RESULT_CODES,
   RENAME_STRATEGIES,
+  RESOURCE_CREATION_KINDS,
   RESOURCE_LIFECYCLE_STATES,
   RESOURCE_TYPES,
   RISK_CEILINGS,
@@ -82,6 +84,7 @@ import {
   type Principal,
   type ProcessCleanupPolicy,
   type ProcessIdentity,
+  type ResourceCreationPlan,
   type ReconcileResourceAction,
   type ReconciliationObservation,
   type ReconciliationResolution,
@@ -1134,6 +1137,7 @@ const MANAGED_RESOURCE_KEYS = [
   "identity_digest",
   "lifecycle_state",
   "verification_state",
+  "abandoned_reason",
   "created_at",
   "updated_at",
 ] as const;
@@ -1502,15 +1506,27 @@ export function validateAbandonedResource(input: unknown): AbandonedResource {
       "AbandonedResource.cleanup_policy must be null when lifecycle_state=abandoned",
     );
   }
+  const abandoned_reason = validateEnum(
+    obj.abandoned_reason,
+    "AbandonedResource.abandoned_reason",
+    ABANDONED_RESOURCE_REASONS,
+  );
+  const verification_state = validateEnum(
+    obj.verification_state,
+    "AbandonedResource.verification_state",
+    VERIFICATION_STATES,
+  );
+  if (verification_state !== "verified") {
+    throw new Foundation0ValidationError(
+      `AbandonedResource.verification_state must be "verified" for abandoned_reason="${abandoned_reason}"`,
+    );
+  }
   return {
     ...common,
     resource_type,
     lifecycle_state: "abandoned",
-    verification_state: validateEnum(
-      obj.verification_state,
-      "AbandonedResource.verification_state",
-      VERIFICATION_STATES,
-    ),
+    verification_state,
+    abandoned_reason,
     identity: null,
     identity_digest: null,
     cleanup_policy: null,
@@ -1662,6 +1678,108 @@ export function validateManagedResource(input: unknown): ManagedResource {
   throw new Foundation0ValidationError(
     `ManagedResource.resource_type must be one of ${RESOURCE_TYPES.join(", ")}, got ${JSON.stringify(resource_type)}`,
   );
+}
+
+// ============================================================ resource creation plan
+
+const RESOURCE_CREATION_PLAN_KEYS = [
+  "schema_version",
+  "plan_id",
+  "mission_id",
+  "resource_id",
+  "resource_type",
+  "planned_resource",
+  "cleanup_policy",
+  "creation_kind",
+  "creation_payload",
+  "authorization_id",
+  "requested_by_action_id",
+  "effect_fingerprint",
+  "created_at",
+] as const;
+
+export function validateResourceCreationPlan(input: unknown): ResourceCreationPlan {
+  const obj = validateObject(input, "ResourceCreationPlan");
+  rejectAdditionalProperties(obj, RESOURCE_CREATION_PLAN_KEYS, "ResourceCreationPlan");
+  const resource_type = validateEnum(
+    obj.resource_type,
+    "ResourceCreationPlan.resource_type",
+    RESOURCE_TYPES,
+  );
+  const creation_kind = validateEnum(
+    obj.creation_kind,
+    "ResourceCreationPlan.creation_kind",
+    RESOURCE_CREATION_KINDS,
+  );
+  if (
+    (resource_type === "process" && creation_kind !== "spawn_process") ||
+    (resource_type === "temp_directory" && creation_kind !== "create_temp_directory")
+  ) {
+    throw new Foundation0ValidationError(
+      `ResourceCreationPlan.creation_kind ${creation_kind} does not match resource_type ${resource_type}`,
+    );
+  }
+
+  const mission_id = validateId(obj.mission_id, "ResourceCreationPlan.mission_id");
+  const resource_id = validateId(obj.resource_id, "ResourceCreationPlan.resource_id");
+  const authorization_id = validateId(
+    obj.authorization_id,
+    "ResourceCreationPlan.authorization_id",
+  );
+  const planned_resource = validatePlannedResource(obj.planned_resource);
+  if (planned_resource.mission_id !== mission_id) {
+    throw new Foundation0ValidationError(
+      "ResourceCreationPlan.planned_resource.mission_id must match mission_id",
+    );
+  }
+  if (planned_resource.resource_id !== resource_id) {
+    throw new Foundation0ValidationError(
+      "ResourceCreationPlan.planned_resource.resource_id must match resource_id",
+    );
+  }
+  if (planned_resource.authorization_id !== authorization_id) {
+    throw new Foundation0ValidationError(
+      "ResourceCreationPlan.planned_resource.authorization_id must match authorization_id",
+    );
+  }
+  if (planned_resource.resource_type !== resource_type) {
+    throw new Foundation0ValidationError(
+      "ResourceCreationPlan.planned_resource.resource_type must match resource_type",
+    );
+  }
+
+  const cleanup_policy = resource_type === "process"
+    ? validateProcessCleanupPolicy(obj.cleanup_policy)
+    : validateTempDirectoryCleanupPolicy(obj.cleanup_policy);
+  const creation_payload = validateObject(
+    obj.creation_payload,
+    "ResourceCreationPlan.creation_payload",
+  );
+
+  return {
+    schema_version: validateSchemaVersion(
+      obj.schema_version,
+      "ResourceCreationPlan.schema_version",
+    ),
+    plan_id: validateId(obj.plan_id, "ResourceCreationPlan.plan_id"),
+    mission_id,
+    resource_id,
+    resource_type,
+    planned_resource,
+    cleanup_policy,
+    creation_kind,
+    creation_payload,
+    authorization_id,
+    requested_by_action_id: validateId(
+      obj.requested_by_action_id,
+      "ResourceCreationPlan.requested_by_action_id",
+    ),
+    effect_fingerprint: validateDigest(
+      obj.effect_fingerprint,
+      "ResourceCreationPlan.effect_fingerprint",
+    ),
+    created_at: validateTimestamp(obj.created_at, "ResourceCreationPlan.created_at"),
+  };
 }
 
 // ============================================================ evidence / owner decision / closeout

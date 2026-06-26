@@ -66,15 +66,17 @@ This slice does not claim sandbox containment against an actor that bypasses top
 `[FIRST-SLICE]` Canonical event stream:
 
 ```text
-.pi/topology/missions/<mission_id>/runtime-events.jsonl
+.pi/topology/missions/<mission_id>/foundation0/runtime-events.jsonl
 ```
 
 `[FIRST-SLICE]` First-slice projections:
 
 ```text
-.pi/topology/missions/<mission_id>/resource-ledger.jsonl
-.pi/topology/missions/<mission_id>/cleanup-log.jsonl
-.pi/topology/missions/<mission_id>/closeout.json
+.pi/topology/missions/<mission_id>/foundation0/resource-ledger.jsonl
+.pi/topology/missions/<mission_id>/foundation0/cleanup-log.jsonl
+.pi/topology/missions/<mission_id>/foundation0/closeout.json
+.pi/topology/missions/<mission_id>/foundation0/payloads/<payload_digest>.json
+.pi/topology/missions/<mission_id>/foundation0/locks/mission-events.lock
 ```
 
 `runtime-events.jsonl` is authoritative. Projection files are rebuildable views or indexes. If a projection conflicts with the canonical event stream, the event stream wins and an incident or reconciliation event MUST be recorded.
@@ -358,7 +360,7 @@ Rules:
     "entity_type": "event|message|action",
     "entity_id": "evt_..."
   },
-  "payload_ref": "mission:mission_.../artifacts/runtime/payloads/evt_....json",
+  "payload_ref": "foundation0/payloads/<payload_digest>.json",
   "payload_digest": "sha256:...",
   "created_at": "2026-06-26T12:00:00.000Z"
 }

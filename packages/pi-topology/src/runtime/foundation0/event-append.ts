@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import {
   canonicalizeForDigest,
@@ -15,6 +15,13 @@ import {
 } from "./schema.ts";
 import { validateEvent } from "./validation.ts";
 import { withLock } from "./lockfile.ts";
+import {
+  appendFileDurably,
+  fsyncDirectory,
+  renameDurably,
+  unlinkIfExists,
+  writeDurableFile,
+} from "./durable-fs.ts";
 
 export interface Foundation0StoragePaths {
   rootDir: string;
@@ -113,26 +120,6 @@ function sequencedEventId(sequence: number): string {
   return `evt_seq_${String(sequence).padStart(12, "0")}`;
 }
 
-async function writeDurableFile(path: string, content: string, flags: string | number): Promise<void> {
-  let handle;
-  try {
-    handle = await open(path, flags, 0o600);
-    await handle.writeFile(content, "utf8");
-    await handle.sync();
-  } finally {
-    await handle?.close();
-  }
-}
-
-async function unlinkIfExists(path: string): Promise<void> {
-  try {
-    await unlink(path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-    throw error;
-  }
-}
-
 async function readPayloadIfExists(payloadPath: string): Promise<string | null> {
   try {
     return await readFile(payloadPath, "utf8");
@@ -168,7 +155,7 @@ async function ensurePayloadFile(
     if (existing !== null && referencedPayloadDigests.has(digest)) {
       throw new PayloadDigestMismatchError(payloadPath);
     }
-    await rename(tempPath, payloadPath);
+    await renameDurably(tempPath, payloadPath);
   } catch (error) {
     await unlinkIfExists(tempPath);
     throw error;
@@ -176,9 +163,11 @@ async function ensurePayloadFile(
   return digest;
 }
 
-async function appendDurableEventRow(eventLogPath: string, event: Event): Promise<void> {
-  await mkdir(dirname(eventLogPath), { recursive: true });
-  await writeDurableFile(eventLogPath, `${JSON.stringify(event)}\n`, constants.O_CREAT | constants.O_APPEND | constants.O_WRONLY);
+async function appendDurableEventRow(paths: Foundation0StoragePaths, event: Event): Promise<void> {
+  const result = await appendFileDurably(paths.eventLogPath, `${JSON.stringify(event)}\n`);
+  if (result.created) {
+    await fsyncDirectory(paths.rootDir);
+  }
 }
 
 function parseEventRow(row: string, eventLogPath: string): Event {
@@ -235,6 +224,8 @@ export async function appendFoundation0Event(input: AppendFoundation0EventInput)
     paths.missionEventsLockPath,
     {
       lockId: input.lockId ?? input.idempotencyKey ?? "foundation0_event_append",
+      missionId: input.missionId,
+      purpose: "mission_event_append",
       timeoutMs: input.lockTimeoutMs ?? 5_000,
       retryDelayMs: input.lockRetryDelayMs ?? 10,
       staleMs: input.lockStaleMs ?? 60_000,
@@ -269,7 +260,7 @@ export async function appendFoundation0Event(input: AppendFoundation0EventInput)
         created_at: new Date().toISOString(),
       });
 
-      await appendDurableEventRow(paths.eventLogPath, event);
+      await appendDurableEventRow(paths, event);
       return event;
     },
   );

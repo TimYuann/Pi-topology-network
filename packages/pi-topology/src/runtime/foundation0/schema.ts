@@ -27,6 +27,16 @@ export type Capability = (typeof CAPABILITIES)[number];
 export const RESOURCE_TYPES = ["process", "temp_directory"] as const;
 export type ResourceType = (typeof RESOURCE_TYPES)[number];
 
+export const RESOURCE_CREATION_KINDS = [
+  "spawn_process",
+  "create_temp_directory",
+] as const;
+export type ResourceCreationKind = (typeof RESOURCE_CREATION_KINDS)[number];
+
+export const ABANDONED_RESOURCE_REASONS = ["never_created"] as const;
+export type AbandonedResourceReason =
+  (typeof ABANDONED_RESOURCE_REASONS)[number];
+
 export const MISSION_RELATIONS = ["same_mission"] as const;
 export type MissionRelation = (typeof MISSION_RELATIONS)[number];
 
@@ -597,6 +607,8 @@ export interface AbandonedResource extends ManagedResourceCommon {
   identity: null;
   identity_digest: null;
   cleanup_policy: null;
+  abandoned_reason: "never_created";
+  verification_state: "verified";
 }
 
 export interface ObservedProcessResource extends ManagedResourceCommon {
@@ -620,6 +632,22 @@ export type ManagedResource =
   | AbandonedResource
   | ObservedProcessResource
   | ObservedTempDirectoryResource;
+
+export interface ResourceCreationPlan {
+  schema_version: 1;
+  plan_id: string;
+  mission_id: string;
+  resource_id: string;
+  resource_type: ResourceType;
+  planned_resource: PlannedResource;
+  cleanup_policy: ProcessCleanupPolicy | TempDirectoryCleanupPolicy;
+  creation_kind: ResourceCreationKind;
+  creation_payload: Record<string, unknown>;
+  authorization_id: string;
+  requested_by_action_id: string;
+  effect_fingerprint: string;
+  created_at: string;
+}
 
 export interface ProcessIdentity {
   pid: number;

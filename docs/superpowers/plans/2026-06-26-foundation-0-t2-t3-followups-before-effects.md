@@ -10,6 +10,24 @@ This tracking doc records the T2/T3 issues that must be resolved before Foundati
 
 T4 may proceed as strict read-only ProcessIdentity / ProcessInspector work. The items below block later effectful tasks.
 
+## T5 Status Update
+
+T5 closes follow-up items 1, 2, 3, 5, and 6 for the Foundation-0 before-effects boundary:
+
+- canonical storage is `<missionDir>/foundation0/`,
+- `ResourceCreationPlan` is a schema object with validator, canonical effect fingerprint, and event payload binding,
+- identity-null abandoned requires `abandoned_reason: "never_created"` and `verification_state: "verified"`,
+- parent-directory fsync is part of claimed durable writes,
+- lock metadata is richer and stale-lock recovery is conservative.
+
+Follow-up item 4 remains open:
+
+```text
+Durable cleanup-attempt acquisition remains required before any real signal/delete.
+T3's in-memory cleanup coordination is acceptable only for pure lifecycle logic
+and read-only inspection phases.
+```
+
 ## Hard Boundary
 
 Do not authorize these until this follow-up list is resolved or explicitly split into reviewed task docs:

@@ -14,6 +14,10 @@ import {
   verifyFoundation0EventPayloads,
 } from "../../../src/runtime/foundation0/event-append.ts";
 import {
+  getDurableFsTestHooks,
+  setDurableFsTestHooks,
+} from "../../../src/runtime/foundation0/durable-fs.ts";
+import {
   canonicalizeForDigest,
   computeSha256Digest,
 } from "../../../src/runtime/foundation0/ids.ts";
@@ -23,6 +27,21 @@ const MISSION_ID = "mission_foundation0_t2";
 async function tempMissionDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "foundation0-event-"));
 }
+
+test("foundation0StoragePaths uses the canonical foundation0 storage layout", async () => {
+  const missionDir = await tempMissionDir();
+  try {
+    const paths = foundation0StoragePaths(missionDir);
+
+    assert.equal(paths.rootDir, join(missionDir, "foundation0"));
+    assert.equal(paths.eventLogPath, join(missionDir, "foundation0", "runtime-events.jsonl"));
+    assert.equal(paths.payloadsDir, join(missionDir, "foundation0", "payloads"));
+    assert.equal(paths.locksDir, join(missionDir, "foundation0", "locks"));
+    assert.equal(paths.missionEventsLockPath, join(missionDir, "foundation0", "locks", "mission-events.lock"));
+  } finally {
+    await rm(missionDir, { recursive: true, force: true });
+  }
+});
 
 test("appendFoundation0Event allocates monotonic sequences and writes canonical payloads", async () => {
   const missionDir = await tempMissionDir();
@@ -52,6 +71,7 @@ test("appendFoundation0Event allocates monotonic sequences and writes canonical 
     assert.equal(first.sequence, 0);
     assert.equal(second.sequence, 1);
     assert.equal(first.payload_digest, computeSha256Digest(firstPayload));
+    assert.equal(first.payload_ref, `foundation0/payloads/${first.payload_digest}.json`);
 
     const paths = foundation0StoragePaths(missionDir);
     const rawPayload = await readFile(
@@ -66,6 +86,36 @@ test("appendFoundation0Event allocates monotonic sequences and writes canonical 
       [0, 1],
     );
   } finally {
+    await rm(missionDir, { recursive: true, force: true });
+  }
+});
+
+test("appendFoundation0Event fsyncs payload and Foundation-0 parent directories", async () => {
+  const missionDir = await tempMissionDir();
+  const previousHooks = getDurableFsTestHooks();
+  const fsyncedDirectories: string[] = [];
+  try {
+    setDurableFsTestHooks({
+      onFsyncDirectory: (path) => {
+        fsyncedDirectories.push(path);
+      },
+    });
+    const event = await appendFoundation0Event({
+      missionDir,
+      missionId: MISSION_ID,
+      eventType: "action_requested",
+      entityType: "action",
+      entityId: "action_durable_dirs",
+      payload: { durable: true },
+      lockId: "test_durable_dirs",
+    });
+    const paths = foundation0StoragePaths(missionDir);
+
+    assert.equal(event.payload_ref, `foundation0/payloads/${event.payload_digest}.json`);
+    assert.ok(fsyncedDirectories.includes(paths.payloadsDir));
+    assert.ok(fsyncedDirectories.includes(paths.rootDir));
+  } finally {
+    setDurableFsTestHooks(previousHooks);
     await rm(missionDir, { recursive: true, force: true });
   }
 });

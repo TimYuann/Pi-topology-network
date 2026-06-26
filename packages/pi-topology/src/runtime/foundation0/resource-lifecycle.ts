@@ -99,7 +99,7 @@ export class ResourceCleanupPolicyError extends Error {
 
 const ALLOWED_TRANSITIONS: Record<ResourceLifecycleState, readonly ResourceLifecycleState[]> = {
   planned: ["registered", "abandoned"],
-  registered: ["active", "abandoned"],
+  registered: ["active"],
   active: ["stale", "cleanup_pending"],
   stale: ["cleanup_pending", "cleaned"],
   cleanup_pending: ["cleanup_attempted"],
@@ -247,13 +247,21 @@ export function transitionManagedResource(
   assertAllowedTransition(resource.lifecycle_state, options.to);
   const verification_state = options.verificationState ?? resource.verification_state;
   if (options.to === "abandoned") {
+    if (resource.lifecycle_state !== "planned") {
+      throw new ResourceLifecycleTransitionError(
+        resource.lifecycle_state,
+        options.to,
+        "Only planned resources can use identity-null abandoned never_created branch",
+      );
+    }
     return validateManagedResource({
       ...resource,
       lifecycle_state: "abandoned",
       identity: null,
       identity_digest: null,
       cleanup_policy: null,
-      verification_state,
+      abandoned_reason: "never_created",
+      verification_state: "verified",
       updated_at: options.updatedAt,
     });
   }

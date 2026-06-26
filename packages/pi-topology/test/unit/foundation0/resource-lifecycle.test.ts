@@ -98,7 +98,6 @@ test("allowed lifecycle transitions succeed and validate returned resources", ()
       "abandoned",
     ],
     [observedResource("registered"), "active"],
-    [observedResource("registered"), "abandoned"],
     [observedResource("active"), "stale"],
     [observedResource("active"), "cleanup_pending"],
     [observedResource("stale"), "cleanup_pending"],
@@ -137,8 +136,42 @@ test("planned to abandoned succeeds without identity and validates as ManagedRes
   assert.equal(abandoned.identity, null);
   assert.equal(abandoned.identity_digest, null);
   assert.equal(abandoned.cleanup_policy, null);
-  assert.equal(abandoned.verification_state, "unverified");
+  assert.equal(abandoned.verification_state, "verified");
+  assert.equal(abandoned.abandoned_reason, "never_created");
   assert.equal(validateManagedResource(abandoned).lifecycle_state, "abandoned");
+});
+
+test("identity-null abandoned requires never_created reason and verified state", () => {
+  assert.throws(
+    () =>
+      validateManagedResource({
+        ...plannedResource(),
+        lifecycle_state: "abandoned",
+        verification_state: "verified",
+      }),
+    Foundation0ValidationError,
+  );
+  assert.throws(
+    () =>
+      validateManagedResource({
+        ...plannedResource(),
+        lifecycle_state: "abandoned",
+        abandoned_reason: "never_created",
+        verification_state: "unverified",
+      }),
+    Foundation0ValidationError,
+  );
+});
+
+test("observed resource cannot become identity-null abandoned", () => {
+  assert.throws(
+    () =>
+      transitionManagedResource(observedResource("registered"), {
+        to: "abandoned",
+        updatedAt: NEXT_TS,
+      }),
+    ResourceLifecycleTransitionError,
+  );
 });
 
 test("invalid lifecycle transitions fail with recognizable errors", () => {

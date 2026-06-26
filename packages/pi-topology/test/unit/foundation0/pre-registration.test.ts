@@ -185,5 +185,7 @@ test("planned resource can be abandoned when external creation never happened", 
   assert.equal(abandoned.identity, null);
   assert.equal(abandoned.identity_digest, null);
   assert.equal(abandoned.cleanup_policy, null);
+  assert.equal(abandoned.verification_state, "verified");
+  assert.equal(abandoned.abandoned_reason, "never_created");
   assert.equal(validateManagedResource(abandoned).lifecycle_state, "abandoned");
 });
