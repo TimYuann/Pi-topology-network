@@ -693,6 +693,36 @@ export interface TempDirectoryMarker {
   created_by_action_id: string;
 }
 
+export interface ApprovedTempRoot {
+  root_id: string;
+  path: string;
+}
+
+export interface ApprovedTempRootRegistry {
+  roots: ApprovedTempRoot[];
+}
+
+export interface ResolvedApprovedTempRoot {
+  root_id: string;
+  configured_path: string;
+  realpath: string;
+}
+
+export interface TempDirectoryCreationPayload {
+  schema_version: 1;
+  approved_temp_root_id: string;
+  directory_basename: string;
+  creation_nonce: string;
+}
+
+export interface TempDirectoryIdentityObservation {
+  schema_version: 1;
+  resource_id: string;
+  identity: TempDirectoryIdentity;
+  marker: TempDirectoryMarker;
+  observed_at: string;
+}
+
 export interface TempDirectoryCleanupPolicy {
   rename_strategy: RenameStrategy;
   delete_strategy: DeleteStrategy;

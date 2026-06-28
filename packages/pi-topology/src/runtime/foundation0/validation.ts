@@ -63,6 +63,7 @@ import {
   type Actor,
   type ActionAttempt,
   type AbandonedResource,
+  type ApprovedTempRoot,
   type Authorization,
   type AuthorizationGrant,
   type AuthorizationGrantScope,
@@ -85,6 +86,7 @@ import {
   type ProcessCleanupPolicy,
   type TerminateResourceAction,
   type CleanupAttemptAcquisitionPayload,
+  type TempDirectoryCreationPayload,
  } from "./schema.ts";
 import {
   Foundation0ValidationError,
@@ -1366,14 +1368,15 @@ function validateTempDirectoryCleanupPolicy(
       "TempDirectoryCleanupPolicy.delete_strategy",
       DELETE_STRATEGIES,
     ),
-    quarantine_path_template:
-      obj.quarantine_path_template === undefined
-        ? undefined
-        : validateString(
+    ...(obj.quarantine_path_template === undefined
+      ? {}
+      : {
+          quarantine_path_template: validateString(
             obj.quarantine_path_template,
             "TempDirectoryCleanupPolicy.quarantine_path_template",
             { allowEmpty: false },
           ),
+        }),
   };
 }
 
@@ -2092,6 +2095,90 @@ export function computeTempDirectoryMarkerDigest(
   marker: TempDirectoryMarker,
 ): string {
   return computeSha256Digest(marker);
+}
+
+// ============================================================ approved temp root and creation payload (T7)
+
+const APPROVED_TEMP_ROOT_KEYS = ["root_id", "path"] as const;
+
+/**
+ * T7: validate an `ApprovedTempRoot` registry entry. `root_id` MUST pass
+ * Foundation-0 `validateId()`. `path` MUST be a non-empty string; runtime
+ * helpers layer filesystem containment checks on top of this shape check.
+ */
+export function validateApprovedTempRoot(input: unknown): ApprovedTempRoot {
+  const obj = validateObject(input, "ApprovedTempRoot");
+  rejectAdditionalProperties(obj, APPROVED_TEMP_ROOT_KEYS, "ApprovedTempRoot");
+  return {
+    root_id: validateId(obj.root_id, "ApprovedTempRoot.root_id"),
+    path: validateString(obj.path, "ApprovedTempRoot.path"),
+  };
+}
+
+const TEMP_DIRECTORY_CREATION_PAYLOAD_KEYS = [
+  "schema_version",
+  "approved_temp_root_id",
+  "directory_basename",
+  "creation_nonce",
+] as const;
+
+/**
+ * T7: validate the `directory_basename` is a single, ID-safe path segment.
+ *
+ * Rules (from T7 plan):
+ * - must be a non-empty string;
+ * - must not be `.` or `..`;
+ * - must not contain `/` or `\0`;
+ * - must match ID pattern (Foundation-0 `validateId()`) so it is safe to
+ *   splice into a realpath-joined target path without escaping the root.
+ */
+function validateDirectoryBasename(value: unknown, fieldName: string): string {
+  const str = validateString(value, fieldName);
+  if (str === "." || str === "..") {
+    throw new Foundation0ValidationError(
+      `${fieldName} must not be "." or "..", got "${str}"`,
+    );
+  }
+  if (str.includes("/") || str.includes("\0")) {
+    throw new Foundation0ValidationError(
+      `${fieldName} must not contain "/" or null, got "${str}"`,
+    );
+  }
+  return validateId(str, fieldName);
+}
+
+/**
+ * T7: validate a `TempDirectoryCreationPayload` for shape and grammar.
+ * Cross-field validation against `ResourceCreationPlan` /
+ * `ApprovedTempRoot` registry is enforced by the creation module.
+ */
+export function validateTempDirectoryCreationPayload(
+  input: unknown,
+): TempDirectoryCreationPayload {
+  const obj = validateObject(input, "TempDirectoryCreationPayload");
+  rejectAdditionalProperties(
+    obj,
+    TEMP_DIRECTORY_CREATION_PAYLOAD_KEYS,
+    "TempDirectoryCreationPayload",
+  );
+  return {
+    schema_version: validateSchemaVersion(
+      obj.schema_version,
+      "TempDirectoryCreationPayload.schema_version",
+    ),
+    approved_temp_root_id: validateId(
+      obj.approved_temp_root_id,
+      "TempDirectoryCreationPayload.approved_temp_root_id",
+    ),
+    directory_basename: validateDirectoryBasename(
+      obj.directory_basename,
+      "TempDirectoryCreationPayload.directory_basename",
+    ),
+    creation_nonce: validateString(
+      obj.creation_nonce,
+      "TempDirectoryCreationPayload.creation_nonce",
+    ),
+  };
 }
 
 /**
