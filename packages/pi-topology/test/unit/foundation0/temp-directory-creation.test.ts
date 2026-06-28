@@ -1436,3 +1436,96 @@ test("digest-mismatched activated payload returns reconciliation_required withou
     await rm(approvedRootDir, { recursive: true, force: true });
   }
 });
+
+test("unsupported identity-observation schema returns reconciliation_required without creating another directory", async () => {
+  const missionDir = await tempMissionDir();
+  const approvedRootDir = await tempRootDir();
+  try {
+    const args = await defaultBuildArgs({ missionDir, approvedRootDir });
+    const first = await createManagedTempDirectory({
+      missionDir,
+      repositoryRoot: args.repositoryRoot,
+      currentWorkingDirectory: args.currentWorkingDirectory,
+      approvedTempRoots: [
+        { root_id: "tmp_root_default", path: approvedRootDir },
+      ],
+      actionRequest: args.actionRequest,
+      actionAttempt: args.actionAttempt,
+      allowedDecision: args.allowedDecision,
+      plan: args.plan,
+      cleanupPolicy: args.cleanupPolicy,
+      creationPayload: args.creationPayload,
+      hooks: args.hooks,
+      nowIso: args.nowIso,
+    });
+    assert.equal(first.result, "created");
+    if (first.result !== "created") return;
+    const target = join(approvedRootDir, args.creationPayload.directory_basename);
+    const targetBefore = await lstat(target);
+    const identityObserved = first.events.find(
+      (event) => event.event_type === "resource_identity_observed",
+    );
+    assert.ok(identityObserved);
+
+    const paths = foundation0StoragePaths(missionDir);
+    const unsupportedPayload = {
+      schema_version: 2,
+      resource_id: args.actionRequest.target.resource_id,
+      observed_at: VALID_TS,
+    };
+    const unsupportedDigest = computeSha256Digest(unsupportedPayload);
+    await writeFile(
+      join(paths.payloadsDir, `${unsupportedDigest}.json`),
+      `${canonicalizeForDigest(unsupportedPayload)}\n`,
+      "utf8",
+    );
+    const rawEventLog = await readFile(paths.eventLogPath, "utf8");
+    const rewrittenEvents = rawEventLog
+      .trimEnd()
+      .split("\n")
+      .map((line) => {
+        const event = JSON.parse(line) as Event;
+        if (event.event_id !== identityObserved.event_id) return event;
+        return {
+          ...event,
+          payload_ref: `foundation0/payloads/${unsupportedDigest}.json`,
+          payload_digest: unsupportedDigest,
+        };
+      });
+    await writeFile(
+      paths.eventLogPath,
+      `${rewrittenEvents.map((event) => JSON.stringify(event)).join("\n")}\n`,
+      "utf8",
+    );
+
+    const second = await createManagedTempDirectory({
+      missionDir,
+      repositoryRoot: args.repositoryRoot,
+      currentWorkingDirectory: args.currentWorkingDirectory,
+      approvedTempRoots: [
+        { root_id: "tmp_root_default", path: approvedRootDir },
+      ],
+      actionRequest: args.actionRequest,
+      actionAttempt: args.actionAttempt,
+      allowedDecision: args.allowedDecision,
+      plan: args.plan,
+      cleanupPolicy: args.cleanupPolicy,
+      creationPayload: args.creationPayload,
+      hooks: args.hooks,
+      nowIso: args.nowIso,
+    });
+
+    assert.equal(second.result, "reconciliation_required");
+    if (second.result !== "reconciliation_required") return;
+    assert.equal(second.reason, "unsupported_schema");
+    const targetAfter = await lstat(target);
+    assert.equal(
+      targetAfter.ino,
+      targetBefore.ino,
+      "unsupported identity observation retry must not replace directory",
+    );
+  } finally {
+    await rm(missionDir, { recursive: true, force: true });
+    await rm(approvedRootDir, { recursive: true, force: true });
+  }
+});
