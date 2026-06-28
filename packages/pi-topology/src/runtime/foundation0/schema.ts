@@ -753,3 +753,25 @@ export interface CloseoutRecord {
   evidence_ids?: string[];
   created_at: string;
 }
+
+/**
+ * T6: Foundation-0 Cleanup-Attempt Acquisition payload.
+ *
+ * This payload is the canonical content bound to a `resource_cleanup_pending`
+ * event and is the key building block for durable cleanup-attempt acquisition.
+ * It is intentionally a runtime helper type, not a new first-slice schema
+ * object: the durable event still uses `resource_cleanup_pending`, and the
+ * payload carries the per-attempt idempotency, action, attempt, policy
+ * decision, and acquisition timestamp needed for replay and projection.
+ */
+export interface CleanupAttemptAcquisitionPayload {
+  schema_version: 1;
+  mission_id: string;
+  resource_id: string;
+  identity_digest: string;
+  idempotency_key: string;
+  action_id: string;
+  action_attempt_id: string;
+  policy_decision_id: string;
+  acquired_at: string;
+}

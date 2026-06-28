@@ -406,3 +406,93 @@ test("permission denied or ambiguous holder probe fails safe; verified mismatch 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test("stale lock age can be evaluated with deterministic test clock", async () => {
+  const dir = await tempDir();
+  try {
+    const lockPath = join(dir, "mission-events.lock");
+    await writeFile(
+      lockPath,
+      JSON.stringify({
+        schema_version: 1,
+        lock_id: "stale_clock",
+        mission_id: "mission_lock_001",
+        purpose: "cleanup_attempt_acquisition",
+        holder_pid: 999999,
+        holder_process_start_tuple: {
+          start_time_seconds: 1,
+          start_time_microseconds: 2,
+        },
+        holder_nonce: "stale_clock_nonce",
+        hostname: hostname(),
+        created_at: "2026-06-28T00:00:00.000Z",
+      }),
+      "utf8",
+    );
+
+    const acquired = await acquireLock(lockPath, {
+      lockId: "fresh_clock",
+      missionId: "mission_lock_001",
+      purpose: "cleanup_attempt_acquisition",
+      timeoutMs: 100,
+      retryDelayMs: 1,
+      staleMs: 10,
+      staleNowMs: () => Date.parse("2026-06-28T00:00:00.011Z"),
+      holderProbe: async () => ({ status: "absent_verified" }),
+    });
+
+    assert.equal(
+      (await readLockMetadata(lockPath))?.holder_nonce,
+      acquired.metadata.holder_nonce,
+    );
+    await acquired.release();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("stale lock age is not considered stale when injected clock reports young age", async () => {
+  const dir = await tempDir();
+  try {
+    const lockPath = join(dir, "mission-events.lock");
+    await writeFile(
+      lockPath,
+      JSON.stringify({
+        schema_version: 1,
+        lock_id: "young_clock",
+        mission_id: "mission_lock_001",
+        purpose: "mission_event_append",
+        holder_pid: 999999,
+        holder_process_start_tuple: {
+          start_time_seconds: 1,
+          start_time_microseconds: 2,
+        },
+        holder_nonce: "young_clock_nonce",
+        hostname: hostname(),
+        created_at: "2026-06-28T00:00:00.000Z",
+      }),
+      "utf8",
+    );
+
+    await assert.rejects(
+      () =>
+        acquireLock(lockPath, {
+          lockId: "blocked_young",
+          missionId: "mission_lock_001",
+          purpose: "mission_event_append",
+          timeoutMs: 20,
+          retryDelayMs: 5,
+          staleMs: 60_000,
+          staleNowMs: () => Date.parse("2026-06-28T00:00:00.500Z"),
+          holderProbe: async () => ({ status: "absent_verified" }),
+        }),
+      LockTimeoutError,
+    );
+
+    const raw = await readFile(lockPath, "utf8");
+    assert.match(raw, /young_clock_nonce/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -83,20 +83,9 @@ import {
   type PolicyDecision,
   type Principal,
   type ProcessCleanupPolicy,
-  type ProcessIdentity,
-  type ResourceCreationPlan,
-  type ReconcileResourceAction,
-  type ReconciliationObservation,
-  type ReconciliationResolution,
-  type RegisterResourceAction,
-  type ResidualResourceEntry,
-  type ResourceTarget,
-  type RootAuthorization,
-  type TempDirectoryCleanupPolicy,
-  type TempDirectoryIdentity,
-  type TempDirectoryMarker,
   type TerminateResourceAction,
-} from "./schema.ts";
+  type CleanupAttemptAcquisitionPayload,
+ } from "./schema.ts";
 import {
   Foundation0ValidationError,
   canonicalizeForDigest,
@@ -2026,6 +2015,74 @@ export function computeTempDirectoryIdentityDigest(
   core: TempDirectoryIdentity["identity_core"],
 ): string {
   return computeSha256Digest(core);
+}
+
+// ============================================================ cleanup attempt acquisition (T6)
+
+const CLEANUP_ATTEMPT_ACQUISITION_PAYLOAD_KEYS = [
+  "schema_version",
+  "mission_id",
+  "resource_id",
+  "identity_digest",
+  "idempotency_key",
+  "action_id",
+  "action_attempt_id",
+  "policy_decision_id",
+  "acquired_at",
+] as const;
+
+/**
+ * T6: validate a `CleanupAttemptAcquisitionPayload` for shape and grammar.
+ * Cross-field equality against the originating ActionRequest / ActionAttempt /
+ * PolicyDecision is enforced by the acquisition module, not here.
+ */
+export function validateCleanupAttemptAcquisitionPayload(
+  input: unknown,
+): CleanupAttemptAcquisitionPayload {
+  const obj = validateObject(input, "CleanupAttemptAcquisitionPayload");
+  rejectAdditionalProperties(
+    obj,
+    CLEANUP_ATTEMPT_ACQUISITION_PAYLOAD_KEYS,
+    "CleanupAttemptAcquisitionPayload",
+  );
+  return {
+    schema_version: validateSchemaVersion(
+      obj.schema_version,
+      "CleanupAttemptAcquisitionPayload.schema_version",
+    ),
+    mission_id: validateId(
+      obj.mission_id,
+      "CleanupAttemptAcquisitionPayload.mission_id",
+    ),
+    resource_id: validateId(
+      obj.resource_id,
+      "CleanupAttemptAcquisitionPayload.resource_id",
+    ),
+    identity_digest: validateDigest(
+      obj.identity_digest,
+      "CleanupAttemptAcquisitionPayload.identity_digest",
+    ),
+    idempotency_key: validateId(
+      obj.idempotency_key,
+      "CleanupAttemptAcquisitionPayload.idempotency_key",
+    ),
+    action_id: validateId(
+      obj.action_id,
+      "CleanupAttemptAcquisitionPayload.action_id",
+    ),
+    action_attempt_id: validateId(
+      obj.action_attempt_id,
+      "CleanupAttemptAcquisitionPayload.action_attempt_id",
+    ),
+    policy_decision_id: validateId(
+      obj.policy_decision_id,
+      "CleanupAttemptAcquisitionPayload.policy_decision_id",
+    ),
+    acquired_at: validateTimestamp(
+      obj.acquired_at,
+      "CleanupAttemptAcquisitionPayload.acquired_at",
+    ),
+  };
 }
 
 /**

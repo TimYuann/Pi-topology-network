@@ -34,6 +34,15 @@ export interface LockOptions {
   timeoutMs: number;
   retryDelayMs?: number;
   staleMs?: number;
+  /**
+   * Optional clock for stale-age evaluation only. Returns a positive number of
+   * milliseconds since the Unix epoch. When unset, `Date.now()` is used.
+   *
+   * Acquisition timeouts always use real `Date.now()` so this clock is
+   * consulted ONLY when deciding whether an existing lock is stale enough to
+   * recover.
+   */
+  staleNowMs?: () => number;
   holderProbe?: Foundation0HolderProbe;
   onStaleLockIncident?: (incident: Foundation0StaleLockIncident) => void;
 }
@@ -156,10 +165,15 @@ async function tryCreateLock(lockPath: string, metadata: Foundation0LockMetadata
   }
 }
 
-function isStale(metadata: Foundation0LockMetadata | null, mtimeMs: number, staleMs: number): boolean {
+function isStale(
+  metadata: Foundation0LockMetadata | null,
+  mtimeMs: number,
+  staleMs: number,
+  nowMs: number,
+): boolean {
   const createdAtMs = metadata === null ? Number.NaN : Date.parse(metadata.created_at);
   const timestampMs = Number.isFinite(createdAtMs) ? createdAtMs : mtimeMs;
-  return Date.now() - timestampMs > staleMs;
+  return nowMs - timestampMs > staleMs;
 }
 
 async function removeStaleLockIfStillSame(
@@ -197,7 +211,8 @@ async function cleanupStaleLock(
   }
 
   const metadata = await readLockMetadata(lockPath);
-  if (!isStale(metadata, lockStat.mtimeMs, staleMs)) return;
+  const nowMs = options.staleNowMs?.() ?? Date.now();
+  if (!isStale(metadata, lockStat.mtimeMs, staleMs, nowMs)) return;
   if (metadata === null) return;
   if (metadata.hostname !== hostname()) return;
   if (options.holderProbe === undefined) return;

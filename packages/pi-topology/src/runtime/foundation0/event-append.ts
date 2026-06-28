@@ -288,3 +288,35 @@ export async function verifyFoundation0EventPayloads(missionDir: string): Promis
   }
   return events;
 }
+
+/**
+ * T6: read the canonical payload referenced by an event. Returns the parsed
+ * payload after digest verification.
+ *
+ * Throws `MissingPayloadError` if the payload file does not exist and
+ * `PayloadDigestMismatchError` if the persisted bytes do not match the event's
+ * `payload_digest`. Callers (notably cleanup-attempt acquisition replay) use
+ * these errors to route the attempt to reconciliation rather than blind retry.
+ */
+export async function readFoundation0EventPayload(
+  missionDir: string,
+  event: Event,
+): Promise<unknown> {
+  const paths = foundation0StoragePaths(missionDir);
+  const payloadPath = join(paths.payloadsDir, `${event.payload_digest}.json`);
+  let raw: string;
+  try {
+    raw = await readFile(payloadPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new MissingPayloadError(payloadPath);
+    }
+    throw error;
+  }
+  const parsed = JSON.parse(raw) as unknown;
+  const canonical = `${canonicalizeForDigest(parsed)}\n`;
+  if (raw !== canonical || computeSha256Digest(parsed) !== event.payload_digest) {
+    throw new PayloadDigestMismatchError(payloadPath);
+  }
+  return parsed;
+}
